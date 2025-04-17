@@ -72,21 +72,21 @@ public class DeveloperPlugin
             The tool simply logs your thought process for better transparency and does not execute any code or make changes.
             """
     )]
-    public async Task<string> Think(string thought)
+    public string Think(string thought)
     {
         return $"Your thought has been logged";
     }
 
     [KernelFunction]
     [Description("Read File")]
-    public async Task<string> ReadFile(string path)
+    public string ReadFile(string path)
     {
         return File.ReadAllText(path);
     }
 
     [KernelFunction]
     [Description("list files")]
-    public async Task<string> ListFiles(string path)
+    public string ListFiles(string path)
     {
         var files = string.Join(" ", Directory.GetFiles(path));
         var directories = string.Join(" ", Directory.GetDirectories(path));
@@ -95,7 +95,7 @@ public class DeveloperPlugin
 
     [KernelFunction]
     [Description("Write File")]
-    public async Task<string> WriteFile(string path, string content)
+    public string WriteFile(string path, string content)
     {
         File.WriteAllText(path, content);
         return $"wrote content to {path}";
@@ -108,7 +108,7 @@ public class DeveloperPlugin
             You should *almost always* use this over `WriteFile` to avoid overwriting the entire file.
             """
     )]
-    public async Task<string> EditFile(string path, string replace, string with)
+    public string EditFile(string path, string replace, string with)
     {
         if (!File.Exists(path))
         {
