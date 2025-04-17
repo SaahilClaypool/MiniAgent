@@ -39,14 +39,17 @@ Console.WriteLine("You > ");
 while (Console.ReadLine() is var input && !string.IsNullOrWhiteSpace(input))
 {
     history.AddUserMessage(input);
-    var result = await chatCompletionService.GetChatMessageContentAsync(
-        history,
-        kernel: kernel,
-        executionSettings: new() { FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(), }
-    );
-    Console.WriteLine(
-        $"-----------------------------------------\nAssitant > {result.Content!}\n\n"
-    );
+    await foreach (
+        var token in chatCompletionService.GetStreamingChatMessageContentsAsync(
+            history,
+            kernel: kernel,
+            executionSettings: new() { FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(), }
+        )
+    )
+    {
+        Console.Write(token);
+    }
+    Console.WriteLine();
     Console.WriteLine($"[{history.Count}] You> ");
 }
 Console.WriteLine($"Done");
@@ -138,6 +141,20 @@ public class WebPlugin(KernelFactory kf)
 public class DeveloperPlugin()
 {
     [KernelFunction]
+    [Description("Get repository symbol overview")]
+    public async Task<string> RepositoryOverview()
+    {
+        var psi = new ProcessStartInfo("aider", "--show-repo-map")
+        {
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+        var proc = Process.Start(psi);
+        var repoMap = await proc!.StandardOutput.ReadToEndAsync();
+        return repoMap;
+    }
+
+    [KernelFunction]
     [Description("Search local files using ripgrep")]
     public async Task<string> Rg(string search)
     {
@@ -171,6 +188,26 @@ public class DeveloperPlugin()
     }
 
     [KernelFunction]
+    [Description(
+        """
+            Use the tool to think about something. It will not obtain new information or make any changes to the repository, but just log the thought. Use it when complex reasoning or brainstorming is needed. 
+
+            Common use cases:
+            1. When exploring a repository and discovering the source of a bug, call this tool to brainstorm several unique ways of fixing the bug, and assess which change(s) are likely to be simplest and most effective
+            2. After receiving test results, use this tool to brainstorm ways to fix failing tests
+            3. When planning a complex refactoring, use this tool to outline different approaches and their tradeoffs
+            4. When designing a new feature, use this tool to think through architecture decisions and implementation details
+            5. When debugging a complex issue, use this tool to organize your thoughts and hypotheses
+
+            The tool simply logs your thought process for better transparency and does not execute any code or make changes.
+            """
+    )]
+    public async Task<string> Think(string thought)
+    {
+        return $"Your thought has been logged";
+    }
+
+    [KernelFunction]
     [Description("Read File")]
     public async Task<string> ReadFile(string path)
     {
@@ -179,7 +216,7 @@ public class DeveloperPlugin()
 
     [KernelFunction]
     [Description("list files")]
-    public async Task<string> Ls(string path)
+    public async Task<string> ListFiles(string path)
     {
         var files = string.Join(" ", Directory.GetFiles(path));
         var directories = string.Join(" ", Directory.GetDirectories(path));
@@ -191,6 +228,61 @@ public class DeveloperPlugin()
     public async Task<string> WriteFile(string path, string content)
     {
         File.WriteAllText(path, content);
+        return $"wrote content to {path}";
+    }
+
+    [KernelFunction]
+    [Description(
+        """
+            Edit a file by providing the path, the text to replace, and the replacement text.
+            You should *almost always* use this over `WriteFile` to avoid overwriting the entire file.
+            """
+    )]
+    public async Task<string> EditFile(string path, string replace, string with)
+    {
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException($"File not found: {path}");
+        }
+        var content = File.ReadAllText(path);
+        var words = content.Split(
+            new[] { ' ', '\t', '\n', '\r' },
+            StringSplitOptions.RemoveEmptyEntries
+        );
+        var closestMatch = words
+            .OrderBy(word => LevenshteinDistance(word.Replace(" ", ""), replace.Replace(" ", "")))
+            .FirstOrDefault();
+        if (closestMatch != null)
+        {
+            content = content.Replace(closestMatch, with);
+        }
+        File.WriteAllText(path, content);
+
+        static int LevenshteinDistance(string source, string target)
+        {
+            var n = source.Length;
+            var m = target.Length;
+            var dp = new int[n + 1, m + 1];
+
+            for (var i = 0; i <= n; i++)
+                dp[i, 0] = i;
+            for (var j = 0; j <= m; j++)
+                dp[0, j] = j;
+
+            for (var i = 1; i <= n; i++)
+            {
+                for (var j = 1; j <= m; j++)
+                {
+                    var cost = source[i - 1] == target[j - 1] ? 0 : 1;
+                    dp[i, j] = Math.Min(
+                        Math.Min(dp[i - 1, j] + 1, dp[i, j - 1] + 1),
+                        dp[i - 1, j - 1] + cost
+                    );
+                }
+            }
+
+            return dp[n, m];
+        }
         return $"wrote content to {path}";
     }
 }
@@ -215,6 +307,8 @@ public class AgentPlugin(KernelFactory kf)
             """
             You are an agent - please keep going until the user’s query is completely resolved, before ending your turn and yielding back to the user. Only terminate your turn when you are sure that the problem is solved.
             You MUST plan extensively before each function call, and reflect extensively on the outcomes of the previous function calls. DO NOT do this entire process by making function calls only, as this can impair your ability to solve the problem and think insightfully.
+
+            Your final message should be a summary of the entire process, including the final result of the task.
             """
         );
         history.AddUserMessage(taskDefinition);
