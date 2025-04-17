@@ -245,45 +245,71 @@ public class DeveloperPlugin()
             throw new FileNotFoundException($"File not found: {path}");
         }
         var content = File.ReadAllText(path);
-        var words = content.Split(
-            new[] { ' ', '\t', '\n', '\r' },
-            StringSplitOptions.RemoveEmptyEntries
-        );
-        var closestMatch = words
-            .OrderBy(word => LevenshteinDistance(word.Replace(" ", ""), replace.Replace(" ", "")))
-            .FirstOrDefault();
-        if (closestMatch != null)
+        if (!content.Contains(replace))
         {
-            content = content.Replace(closestMatch, with);
-        }
-        File.WriteAllText(path, content);
-
-        static int LevenshteinDistance(string source, string target)
-        {
-            var n = source.Length;
-            var m = target.Length;
-            var dp = new int[n + 1, m + 1];
-
-            for (var i = 0; i <= n; i++)
-                dp[i, 0] = i;
-            for (var j = 0; j <= m; j++)
-                dp[0, j] = j;
-
-            for (var i = 1; i <= n; i++)
+            // send replace to the closest span by finding the chunk of text with the closest edit distance.
+            // if the replacement text is multiple lines, then just find the line with the lowest edit distance to the first line
+            var lines = content.Split('\n');
+            var replacementLines = replace.Split('\n');
+            var firstLine = replacementLines[0];
+            var closestLine = lines
+                .Select(
+                    (line, idx) =>
+                        (line, distance: LevenshteinDistance(line.Trim(), firstLine.Trim()), idx)
+                )
+                .OrderBy(x => x.distance)
+                .FirstOrDefault();
+            if (closestLine.distance > (replace.Length / 2))
             {
-                for (var j = 1; j <= m; j++)
+                // if the closest line is more than half the length of the replacement text, then we should not replace it
+                // this is a heuristic to avoid replacing text that is not similar enough
                 {
-                    var cost = source[i - 1] == target[j - 1] ? 0 : 1;
-                    dp[i, j] = Math.Min(
-                        Math.Min(dp[i - 1, j] + 1, dp[i, j - 1] + 1),
-                        dp[i - 1, j - 1] + cost
+                    throw new ArgumentException(
+                        $"The text to replace was not found in the file. The closest match was: {closestLine.line}"
                     );
                 }
             }
-
-            return dp[n, m];
+            // if the closest line is less than half the length of the replacement text, then we should replace it
+            replace = string.Join(
+                "\n",
+                lines[
+                    closestLine.idx..new[]
+                    {
+                        lines.Length,
+                        closestLine.idx + 1,
+                        replacementLines.Length + closestLine.idx
+                    }.Min()
+                ]
+            );
         }
+        content = content.Replace(replace, with);
+        File.WriteAllText(path, content);
         return $"wrote content to {path}";
+
+        int LevenshteinDistance(string s, string t)
+        {
+            var d = new int[s.Length + 1, t.Length + 1];
+            for (var i = 0; i <= s.Length; i++)
+            {
+                d[i, 0] = i;
+            }
+            for (var j = 0; j <= t.Length; j++)
+            {
+                d[0, j] = j;
+            }
+            for (var i = 1; i <= s.Length; i++)
+            {
+                for (var j = 1; j <= t.Length; j++)
+                {
+                    var cost = s[i - 1] == t[j - 1] ? 0 : 1;
+                    d[i, j] = Math.Min(
+                        Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1),
+                        d[i - 1, j - 1] + cost
+                    );
+                }
+            }
+            return d[s.Length, t.Length];
+        }
     }
 }
 
