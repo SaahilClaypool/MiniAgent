@@ -28,6 +28,7 @@ public class DeveloperPlugin
     [Description("Search local files using ripgrep")]
     public async Task<string> Rg(string search)
     {
+        Console.WriteLine($"[DEBUG] Rg called with search parameter: {search}");
         var rgPath = "rg";
         var arguments = $"\"{search}\" -C 2 --max-columns 200 ";
 
