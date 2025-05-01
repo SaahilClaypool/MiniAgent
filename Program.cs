@@ -37,7 +37,17 @@ while (Console.ReadLine() is var input && !string.IsNullOrWhiteSpace(input))
         var token in chatCompletionService.GetStreamingChatMessageContentsAsync(
             history,
             kernel: kernel,
-            executionSettings: new() { FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(), }
+            executionSettings: new PromptExecutionSettings()
+            {
+                FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
+                ExtensionData = new Dictionary<string, object>
+                {
+                    ["provider"] = new Dictionary<string, object>
+                    {
+                        ["order"] = new List<string>() { "groq" },
+                    }
+                }
+            }
         )
     )
     {
