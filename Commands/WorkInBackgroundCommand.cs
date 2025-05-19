@@ -37,8 +37,34 @@ namespace MyAgent.Commands
         {
             try
             {
-                // Use GitHelper to create a worktree for a branch named based on the task (e.g., "bg-task")
-                string branchName = "bg-" + Guid.NewGuid().ToString("N");
+                // 1) Create kernel (we’ll also use it below)
+                var kernel = _kernelFactory.Create(
+                    LLMModel.Large,
+                    typeof(WebPlugin),
+                    typeof(DeveloperPlugin),
+                    typeof(AgentPlugin)
+                );
+
+                // 2) Define a prompt function to generate a concise branch slug
+                var generateBranchName = kernel.CreateFunctionFromPrompt(
+                    @"You are a Git branch name generator. Given the task description, return a short branch name containing only lowercase letters, numbers and hyphens (no spaces, no prefix).",
+                    new PromptExecutionSettings(),
+                    functionName: "GenerateBranchName",
+                    description: "Generate a concise branch slug from a task"
+                );
+
+                // 3) Invoke it
+                var branchResult = await kernel.InvokeAsync(
+                    generateBranchName,
+                    new KernelArguments { ["task"] = settings.Task }
+                );
+                // 4) Fallback to GUID if LLM fails, then prefix with "bg-"
+                var slug = branchResult.GetValue<string>()
+                                 ?.Trim().ToLower().Replace(" ", "-")
+                                 ?? Guid.NewGuid().ToString("N");
+                var branchName = $"bg-{slug}";
+
+                // 5) Now create the worktree
                 string worktreePath = GitHelper.CreateWorktree(branchName);
 
                 Console.WriteLine($"Created worktree at: {worktreePath}");
@@ -46,14 +72,6 @@ namespace MyAgent.Commands
                 // Change directory to the worktree
                 Directory.SetCurrentDirectory(worktreePath);
                 Console.WriteLine($"Changed directory to worktree: {worktreePath}");
-
-                // 1) Create kernel with all three plugins
-                var kernel = _kernelFactory.Create(
-                    LLMModel.Large,
-                    typeof(WebPlugin),
-                    typeof(DeveloperPlugin),
-                    typeof(AgentPlugin)
-                );
 
                 // 2) Prepare chat completion service
                 var chatSvc = kernel.GetRequiredService<IChatCompletionService>();
