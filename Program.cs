@@ -1,59 +1,26 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
+using Spectre.Console.Cli;
+using MyAgent.Commands;
+using Spectre.Console.Cli;
 
 var host = Host.CreateDefaultBuilder(args)
-    .ConfigureServices(
-        (context, services) =>
-        {
-            services.AddSingleton<KernelFactory>();
-            services.AddScoped<WebPlugin>();
-            services.AddScoped<DeveloperPlugin>();
-            services.AddScoped<AgentPlugin>();
-        }
-    )
-    .Build();
-var serviceProvider = host.Services;
-var kf = serviceProvider.GetRequiredService<KernelFactory>();
-var kernel = kf.Create(
-    LLMModel.Large,
-    typeof(WebPlugin),
-    typeof(DeveloperPlugin),
-    typeof(AgentPlugin)
-);
-var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
-var history = new ChatHistory();
-history.AddSystemMessage(
-    """
-    You are an agent - please keep going until the user’s query is completely resolved, before ending your turn and yielding back to the user. Only terminate your turn when you are sure that the problem is solved.
-    """
-);
-Console.Write("You > ");
-while (Console.ReadLine() is var input && !string.IsNullOrWhiteSpace(input))
-{
-    history.AddUserMessage(input);
-    await foreach (
-        var token in chatCompletionService.GetStreamingChatMessageContentsAsync(
-            history,
-            kernel: kernel,
-            executionSettings: new PromptExecutionSettings()
-            {
-                FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
-                ExtensionData = new Dictionary<string, object>
-                {
-                    ["provider"] = new Dictionary<string, object>
-                    {
-                        ["order"] = new List<string>() { "groq" },
-                    }
-                }
-            }
-        )
-    )
+    .ConfigureServices((context, services) =>
     {
-        Console.Write(token);
-    }
-    Console.WriteLine();
-    Console.Write($"[{history.Count}] You> ");
-}
-Console.WriteLine($"Done");
+        services.AddSingleton<KernelFactory>();
+        services.AddScoped<WebPlugin>();
+        services.AddScoped<DeveloperPlugin>();
+        services.AddScoped<AgentPlugin>();
+        services.AddScoped<Commands.AskCommand>(); // Register the command
+    })
+    .Build();
+
+var app = new CommandApp();
+app.Configure(config =>
+{
+    config.AddCommand<Commands.AskCommand>("ask")
+        .WithDescription("Process a user query using the agent.")
+        .WithExample(new[] { "ask", "What is the answer?" });
+});
+
+await app.RunAsync(args);
