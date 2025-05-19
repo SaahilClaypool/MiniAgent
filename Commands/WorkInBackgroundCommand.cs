@@ -1,11 +1,5 @@
-using System;
-using System.ComponentModel;
-using System.IO;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Orchestration;
-using Microsoft.SemanticKernel.Executors;
 using Microsoft.SemanticKernel.ChatCompletion;
-using MyAgent;
 using Spectre.Console.Cli;
 
 namespace MyAgent.Commands
@@ -68,13 +62,10 @@ namespace MyAgent.Commands
                 //    a) isDoneEvaluator: examines the chat history and returns "true" or "false"
                 var isDoneEvaluator = kernel.CreateFunctionFromPrompt(
                     @"You are an evaluator. Given the conversation so far, return exactly 'true' if the user's task is complete, otherwise 'false'.",
-                    new PromptExecutionSettings { MaxTokens = 5 },
+                    new PromptExecutionSettings { },
                     functionName: "IsDoneEvaluator",
                     description: "Checks if the background task is complete"
                 );
-
-                //    b) Complete: a kernel function in AgentPlugin that will commit & summarize
-                var completeFunc = kernel.GetFunction("AgentPlugin", "Complete");
 
                 // 4) Initialize chat history
                 var history = new ChatHistory();
@@ -115,7 +106,7 @@ namespace MyAgent.Commands
                     {
                         // 7) Invoke Complete() to commit and summarize
                         var completeResult = await kernel.InvokeAsync(
-                            completeFunc,
+                            isDoneEvaluator,
                             new KernelArguments { ["input"] = settings.Task }
                         );
                         Console.WriteLine(completeResult.GetValue<string>());
