@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Spectre.Console.Cli;
@@ -59,9 +60,9 @@ namespace MyAgent.Commands
                     new KernelArguments { ["task"] = settings.Task }
                 );
                 // 4) Fallback to GUID if LLM fails, then prefix with "bg-"
-                var slug = branchResult.GetValue<string>()
-                                 ?.Trim().ToLower().Replace(" ", "-")
-                                 ?? Guid.NewGuid().ToString("N");
+                var slug =
+                    branchResult.GetValue<string>()?.Trim().ToLower().Replace(" ", "-")
+                    ?? Guid.NewGuid().ToString("N");
                 var branchName = $"bg-{slug}";
 
                 // 5) Now create the worktree
@@ -93,6 +94,7 @@ namespace MyAgent.Commands
                 history.AddUserMessage(settings.Task);
 
                 // 5) Loop: stream assistant responses, then ask evaluator if done
+                var sb = new StringBuilder();
                 while (true)
                 {
                     // stream the chat response
@@ -108,11 +110,12 @@ namespace MyAgent.Commands
                     )
                     {
                         Console.Write(chunk);
+                        sb.Append(chunk);
                     }
                     Console.WriteLine();
 
                     // add the assistant's last response into history
-                    history.AddAssistantMessage(string.Empty); // spectre workaround: real implementation may capture from buffer
+                    // history.AddAssistantMessage(sb.ToString()); // spectre workaround: real implementation may capture from buffer
 
                     // 6) Ask the evaluator if we're done
                     var evalResult = await kernel.InvokeAsync(
