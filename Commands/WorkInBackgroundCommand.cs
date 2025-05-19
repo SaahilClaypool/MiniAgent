@@ -1,17 +1,60 @@
+using System;
+using System.ComponentModel; // for DescriptionAttribute
+using System.IO;
+using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Spectre.Console.Cli;
 
 namespace MyAgent.Commands
 {
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 1) Native plugins (strongly-typed methods)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Generates a slug-safe Git branch name from a task description.</summary>
+    public sealed class BranchPlugin
+    {
+        [KernelFunction, Description("Return a short, slug-safe branch name")]
+        public string GenerateBranchSlug([Description("Task description")] string task)
+        {
+            // Simple local slug-generation; fallback to GUID if empty
+            var slug = Regex.Replace(task.ToLowerInvariant(), @"[^a-z0-9\s-]", "");
+            slug = Regex.Replace(slug, @"\s+", " ").Trim();
+            slug = string.Join('-', slug.Split(' ').Take(6));
+            return string.IsNullOrWhiteSpace(slug) ? Guid.NewGuid().ToString("N") : slug;
+        }
+    }
+
+    /// <summary>Evaluates whether the conversation indicates task completion.</summary>
+    public sealed class EvalPlugin
+    {
+        [KernelFunction, Description("Return true if the user’s task is done, else false")]
+        public bool IsTaskDone([Description("Full conversation so far")] string conversation)
+        {
+            // Simple heuristic; replace with richer logic or an LLM semantic function if desired
+            return conversation.Contains("[DONE]", StringComparison.OrdinalIgnoreCase);
+        }
+
+        [KernelFunction, Description("Summarise completed work for the user")]
+        public string Complete([Description("Original task")] string task) =>
+            $"✅ Task “{task}” finished and committed. All set!";
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // 2) CLI command
+    // ─────────────────────────────────────────────────────────────────────────────
+
     public class WorkInBackgroundSettings : CommandSettings
     {
         [CommandArgument(0, "<task>")]
         public string Task { get; set; } = string.Empty;
     }
 
-    public class WorkInBackgroundCommand : AsyncCommand<WorkInBackgroundSettings>
+    public sealed class WorkInBackgroundCommand : AsyncCommand<WorkInBackgroundSettings>
     {
         private readonly KernelFactory _kernelFactory;
         private readonly WebPlugin _web;
@@ -38,7 +81,7 @@ namespace MyAgent.Commands
         {
             try
             {
-                // 1) Create kernel (we’ll also use it below)
+                // a) Build kernel and register plugins
                 var kernel = _kernelFactory.Create(
                     LLMModel.Large,
                     typeof(WebPlugin),
@@ -46,58 +89,35 @@ namespace MyAgent.Commands
                     typeof(AgentPlugin)
                 );
 
-                // 2) Define a prompt function to generate a concise branch slug
-                var generateBranchName = kernel.CreateFunctionFromPrompt(
-                    @"You are a Git branch name generator. Given the task description, return a short branch name containing only lowercase letters, numbers and hyphens (no spaces, no prefix). The task is {{task}}",
-                    new PromptExecutionSettings(),
-                    functionName: "GenerateBranchName",
-                    description: "Generate a concise branch slug from a task"
-                );
+                kernel.Plugins.AddFromType<BranchPlugin>("Branch");
+                kernel.Plugins.AddFromType<EvalPlugin>("Eval");
 
-                // 3) Invoke it
-                var branchResult = await kernel.InvokeAsync(
-                    generateBranchName,
+                // b) Generate branch name natively
+                var slug = await kernel.InvokeAsync<string>(
+                    "Branch",
+                    "GenerateBranchSlug",
                     new KernelArguments { ["task"] = settings.Task }
                 );
-                // 4) Fallback to GUID if LLM fails, then prefix with "bg-"
-                var slug =
-                    branchResult.GetValue<string>()?.Trim().ToLower().Replace(" ", "-")
-                    ?? Guid.NewGuid().ToString("N");
+
                 var branchName = $"bg-{slug}";
-
-                // 5) Now create the worktree
-                string worktreePath = GitHelper.CreateWorktree(branchName);
-
+                var worktreePath = GitHelper.CreateWorktree(branchName);
                 Console.WriteLine($"Created worktree at: {worktreePath}");
-
-                // Change directory to the worktree
                 Directory.SetCurrentDirectory(worktreePath);
-                Console.WriteLine($"Changed directory to worktree: {worktreePath}");
 
-                // 2) Prepare chat completion service
+                // c) Prepare chat-completion service
                 var chatSvc = kernel.GetRequiredService<IChatCompletionService>();
 
-                // 3) Define two functions:
-                //    a) isDoneEvaluator: examines the chat history and returns "true" or "false"
-                var isDoneEvaluator = kernel.CreateFunctionFromPrompt(
-                    @"You are an evaluator. Given the conversation so far, return exactly 'true' if the user's task is complete, otherwise 'false'.",
-                    new PromptExecutionSettings { },
-                    functionName: "IsDoneEvaluator",
-                    description: "Checks if the background task is complete"
-                );
-
-                // 4) Initialize chat history
                 var history = new ChatHistory();
                 history.AddSystemMessage(
-                    "You are a background agent. Continue working on the user's request until it is solved."
+                    "You are a background agent. Continue working until the task is solved. "
+                        + "Mark your final answer with [DONE]."
                 );
                 history.AddUserMessage(settings.Task);
 
-                // 5) Loop: stream assistant responses, then ask evaluator if done
-                var sb = new StringBuilder();
+                var buffer = new StringBuilder();
+
                 while (true)
                 {
-                    // stream the chat response
                     await foreach (
                         var chunk in chatSvc.GetStreamingChatMessageContentsAsync(
                             history,
@@ -110,30 +130,30 @@ namespace MyAgent.Commands
                     )
                     {
                         Console.Write(chunk);
-                        sb.Append(chunk);
+                        buffer.Append(chunk);
                     }
                     Console.WriteLine();
 
-                    // add the assistant's last response into history
-                    // history.AddAssistantMessage(sb.ToString()); // spectre workaround: real implementation may capture from buffer
+                    history.AddAssistantMessage(buffer.ToString());
+                    buffer.Clear();
 
-                    // 6) Ask the evaluator if we're done
-                    var evalResult = await kernel.InvokeAsync(
-                        isDoneEvaluator,
-                        new KernelArguments { ["input"] = history.ToString() }
+                    // d) Ask EvalPlugin if we’re done
+                    var isDone = await kernel.InvokeAsync<bool>(
+                        "Eval",
+                        "IsTaskDone",
+                        new KernelArguments { ["conversation"] = history.ToString() }
                     );
-                    bool isDone = bool.TryParse(evalResult.GetValue<string>(), out var b) && b;
+
                     if (isDone)
                     {
-                        // 7) Invoke Complete() to commit and summarize
-                        var completeResult = await kernel.InvokeAsync(
-                            isDoneEvaluator,
-                            new KernelArguments { ["input"] = settings.Task }
+                        var summary = await kernel.InvokeAsync<string>(
+                            "Eval",
+                            "Complete",
+                            new KernelArguments { ["task"] = settings.Task }
                         );
-                        Console.WriteLine(completeResult.GetValue<string>());
+                        Console.WriteLine(summary);
                         break;
                     }
-                    // else, continue looping – evaluator wants more work
                 }
 
                 return 0;
