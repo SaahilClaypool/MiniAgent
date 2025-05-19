@@ -14,6 +14,7 @@ services.AddScoped<WebPlugin>();
 services.AddScoped<DeveloperPlugin>();
 services.AddScoped<AgentPlugin>();
 services.AddScoped<AskCommand>(); // Register the command
+services.AddScoped<WorkInBackgroundCommand>(); // Register the new WorkInBackgroundCommand
 services.AddScoped<ChatCommand>(); // << Register the new ChatCommand
 var registrar = new MyTypeRegistrar(services);
 
@@ -28,6 +29,7 @@ app.Configure(config =>
         .WithExample(new[] { "ask", "What is the answer?" });
 
     config.AddCommand<ChatCommand>("chat").WithDescription("Start interactive agent chat session.");
+    config.AddCommand<WorkInBackgroundCommand>("Work in background").WithDescription("Start a task in the background");
 });
 
 await app.RunAsync(args);
