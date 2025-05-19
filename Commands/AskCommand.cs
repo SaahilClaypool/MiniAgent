@@ -6,7 +6,7 @@ namespace MyAgent.Commands
     public class AskSettings : CommandSettings
     {
         [CommandArgument(0, "<prompt>")]
-        public string Prompt { get; set; }
+        public string Prompt { get; set; } = string.Empty;
     }
 
     public class AskCommand : Command<AskSettings>
