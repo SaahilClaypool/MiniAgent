@@ -27,7 +27,8 @@ app.Configure(config =>
 
     config
         .AddCommand<ChatCommand>("chat")
-        .WithDescription("Start interactive agent chat session.");
+        .WithDescription("Start interactive agent chat session.")
+        .IsDefault();
 });
 
 await app.RunAsync(args);
