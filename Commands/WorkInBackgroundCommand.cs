@@ -48,7 +48,7 @@ namespace MyAgent.Commands
 
                 // 2) Define a prompt function to generate a concise branch slug
                 var generateBranchName = kernel.CreateFunctionFromPrompt(
-                    @"You are a Git branch name generator. Given the task description, return a short branch name containing only lowercase letters, numbers and hyphens (no spaces, no prefix).",
+                    @"You are a Git branch name generator. Given the task description, return a short branch name containing only lowercase letters, numbers and hyphens (no spaces, no prefix). The task is {{task}}",
                     new PromptExecutionSettings(),
                     functionName: "GenerateBranchName",
                     description: "Generate a concise branch slug from a task"
