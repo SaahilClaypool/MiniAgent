@@ -12,6 +12,7 @@ var host = Host.CreateDefaultBuilder(args)
             services.AddScoped<DeveloperPlugin>();
             services.AddScoped<AgentPlugin>();
             services.AddScoped<AskCommand>(); // Register the command
+            services.AddScoped<ChatCommand>(); // << Register the new ChatCommand
         }
     )
     .Build();
