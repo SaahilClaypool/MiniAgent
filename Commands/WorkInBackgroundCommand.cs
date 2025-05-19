@@ -169,9 +169,9 @@ namespace MyAgent.Commands
         {
             var sb = new StringBuilder();
             // iterate all messages in chronological order
-            foreach (var message in history.GetMessages())
+            foreach (var message in history)
             {
-                sb.AppendLine($"[{message.Author}] {message.Content}");
+                sb.AppendLine($"[{message.Role}] {message.Content}\n----");
             }
             return sb.ToString();
         }
