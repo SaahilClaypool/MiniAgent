@@ -29,7 +29,7 @@ app.Configure(config =>
         .WithExample(new[] { "ask", "What is the answer?" });
 
     config.AddCommand<ChatCommand>("chat").WithDescription("Start interactive agent chat session.");
-    config.AddCommand<WorkInBackgroundCommand>("Work in background").WithDescription("Start a task in the background");
+    config.AddCommand<WorkInBackgroundCommand>("bg").WithDescription("Start a task in the background");
 });
 
 await app.RunAsync(args);
