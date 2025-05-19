@@ -40,6 +40,26 @@ public static class GitHelper
         if (gitRoot == null)
             throw new InvalidOperationException("Not inside a git repo.");
 
+        // ────────────────────────────────────────────────────────────────────────────────
+        // 1) discover the current branch
+        // ────────────────────────────────────────────────────────────────────────────────
+        var revParse = new ProcessStartInfo("git")
+        {
+            WorkingDirectory    = gitRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError  = true,
+            UseShellExecute        = false,
+            Arguments              = "rev-parse --abbrev-ref HEAD"
+        };
+        string currentBranch;
+        using (var rev = Process.Start(revParse)!)
+        {
+            currentBranch = rev.StandardOutput.ReadToEnd().Trim();
+            rev.WaitForExit();
+            if (rev.ExitCode != 0)
+                throw new Exception($"git rev-parse failed: {rev.StandardError.ReadToEnd()}");
+        }
+
         // sanitize branch name for filesystem
         var invalid = Path.GetInvalidFileNameChars();
         var safeBranch = new string(
@@ -77,11 +97,12 @@ public static class GitHelper
         // git worktree add
         var psi = new ProcessStartInfo("git")
         {
-            WorkingDirectory = gitRoot,
+            WorkingDirectory    = gitRoot,
             RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            Arguments = $"worktree add \"{worktreePath}\" \"{branchName}\""
+            RedirectStandardError  = true,
+            UseShellExecute        = false,
+            // add a new branch named `branchName` based on the current branch
+            Arguments              = $"worktree add -b \"{branchName}\" \"{worktreePath}\" \"{currentBranch}\""
         };
         using (var p = Process.Start(psi))
         {
