@@ -141,7 +141,7 @@ namespace MyAgent.Commands
                     var isDone = await kernel.InvokeAsync<bool>(
                         "Eval",
                         "IsTaskDone",
-                        new KernelArguments { ["conversation"] = history.ToString() }
+                        new KernelArguments { ["conversation"] = FormatHistory(history) }
                     );
 
                     if (isDone)
@@ -163,6 +163,17 @@ namespace MyAgent.Commands
                 Console.WriteLine($"Error: {ex.Message}");
                 return 1;
             }
+        }
+
+        private static string FormatHistory(ChatHistory history)
+        {
+            var sb = new StringBuilder();
+            // iterate all messages in chronological order
+            foreach (var message in history.GetMessages())
+            {
+                sb.AppendLine($"[{message.Author}] {message.Content}");
+            }
+            return sb.ToString();
         }
     }
 }
