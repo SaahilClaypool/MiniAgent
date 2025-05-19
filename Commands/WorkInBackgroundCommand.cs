@@ -12,9 +12,27 @@ namespace MyAgent.Commands
         public string Task { get; set; } = string.Empty;
     }
 
-    public class WorkInBackgroundCommand : Command<WorkInBackgroundSettings>
+    public class WorkInBackgroundCommand : AsyncCommand<WorkInBackgroundSettings>
     {
-        public override int Execute(CommandContext context, WorkInBackgroundSettings settings)
+        private readonly KernelFactory _kernelFactory;
+        private readonly WebPlugin _web;
+        private readonly DeveloperPlugin _dev;
+        private readonly AgentPlugin _agent;
+
+        public WorkInBackgroundCommand(
+            KernelFactory kernelFactory,
+            WebPlugin web,
+            DeveloperPlugin dev,
+            AgentPlugin agent
+        )
+        {
+            _kernelFactory = kernelFactory;
+            _web = web;
+            _dev = dev;
+            _agent = agent;
+        }
+
+        public override async Task<int> ExecuteAsync(CommandContext context, WorkInBackgroundSettings settings)
         {
             try
             {
@@ -28,11 +46,66 @@ namespace MyAgent.Commands
                 Directory.SetCurrentDirectory(worktreePath);
                 Console.WriteLine($"Changed directory to worktree: {worktreePath}");
 
-                // Here you would run the kernel against the task
-                // For demonstration, just echo the task
-                Console.WriteLine($"Running kernel with task: {settings.Task}");
+                // 1) Create kernel with all three plugins
+                var kernel = _kernelFactory.Create(
+                    LLMModel.Large,
+                    typeof(WebPlugin),
+                    typeof(DeveloperPlugin),
+                    typeof(AgentPlugin)
+                );
 
-                // Add actual kernel execution logic here
+                // 2) Prepare chat completion service
+                var chatSvc = kernel.GetRequiredService<IChatCompletionService>();
+
+                // 3) Define two functions:
+                //    a) isDoneEvaluator: examines the chat history and returns "true" or "false"
+                var isDoneEvaluator = kernel.CreateSemanticFunction(
+                    @"You are an evaluator. Given the conversation so far, return exactly 'true' if the user's task is complete, otherwise 'false'.",
+                    maxTokens: 5
+                );
+
+                //    b) Complete: a kernel function in AgentPlugin that will commit & summarize
+                var completeFunc = kernel.GetFunction("AgentPlugin", "Complete");
+
+                // 4) Initialize chat history
+                var history = new ChatHistory();
+                history.AddSystemMessage(
+                    "You are a background agent. Continue working on the user's request until it is solved."
+                );
+                history.AddUserMessage(settings.Task);
+
+                // 5) Loop: stream assistant responses, then ask evaluator if done
+                while (true)
+                {
+                    // stream the chat response
+                    await foreach (var chunk in chatSvc.GetStreamingChatMessageContentsAsync(
+                        history,
+                        kernel: kernel,
+                        executionSettings: new PromptExecutionSettings
+                        {
+                            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
+                        }
+                    ))
+                    {
+                        Console.Write(chunk);
+                    }
+                    Console.WriteLine();
+
+                    // add the assistant's last response into history
+                    history.AddAssistantMessage(string.Empty); // spectre workaround: real implementation may capture from buffer
+
+                    // 6) Ask the evaluator if we're done
+                    var evalResult = await kernel.RunAsync(isDoneEvaluator, history.ToString());
+                    bool isDone = bool.TryParse(evalResult.Result, out var b) && b;
+                    if (isDone)
+                    {
+                        // 7) Invoke Complete() to commit and summarize
+                        var completeResult = await kernel.RunAsync(completeFunc, settings.Task);
+                        Console.WriteLine(completeResult.Result);
+                        break;
+                    }
+                    // else, continue looping – evaluator wants more work
+                }
 
                 return 0;
             }
