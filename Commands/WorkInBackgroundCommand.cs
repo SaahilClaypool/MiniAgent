@@ -1,6 +1,8 @@
 using System;
 using System.ComponentModel;
 using System.IO;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
 using MyAgent;
 using Spectre.Console.Cli;
 
@@ -32,7 +34,10 @@ namespace MyAgent.Commands
             _agent = agent;
         }
 
-        public override async Task<int> ExecuteAsync(CommandContext context, WorkInBackgroundSettings settings)
+        public override async Task<int> ExecuteAsync(
+            CommandContext context,
+            WorkInBackgroundSettings settings
+        )
         {
             try
             {
@@ -78,14 +83,16 @@ namespace MyAgent.Commands
                 while (true)
                 {
                     // stream the chat response
-                    await foreach (var chunk in chatSvc.GetStreamingChatMessageContentsAsync(
-                        history,
-                        kernel: kernel,
-                        executionSettings: new PromptExecutionSettings
-                        {
-                            FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-                        }
-                    ))
+                    await foreach (
+                        var chunk in chatSvc.GetStreamingChatMessageContentsAsync(
+                            history,
+                            kernel: kernel,
+                            executionSettings: new PromptExecutionSettings
+                            {
+                                FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
+                            }
+                        )
+                    )
                     {
                         Console.Write(chunk);
                     }
