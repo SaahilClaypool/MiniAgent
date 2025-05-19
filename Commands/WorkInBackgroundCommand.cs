@@ -2,6 +2,8 @@ using System;
 using System.ComponentModel;
 using System.IO;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Orchestration;
+using Microsoft.SemanticKernel.Executors;
 using Microsoft.SemanticKernel.ChatCompletion;
 using MyAgent;
 using Spectre.Console.Cli;
@@ -64,9 +66,11 @@ namespace MyAgent.Commands
 
                 // 3) Define two functions:
                 //    a) isDoneEvaluator: examines the chat history and returns "true" or "false"
-                var isDoneEvaluator = kernel.CreateSemanticFunction(
+                var isDoneEvaluator = kernel.CreateFunctionFromPrompt(
                     @"You are an evaluator. Given the conversation so far, return exactly 'true' if the user's task is complete, otherwise 'false'.",
-                    maxTokens: 5
+                    new PromptExecutionSettings { MaxTokens = 5 },
+                    functionName: "IsDoneEvaluator",
+                    description: "Checks if the background task is complete"
                 );
 
                 //    b) Complete: a kernel function in AgentPlugin that will commit & summarize
@@ -102,13 +106,19 @@ namespace MyAgent.Commands
                     history.AddAssistantMessage(string.Empty); // spectre workaround: real implementation may capture from buffer
 
                     // 6) Ask the evaluator if we're done
-                    var evalResult = await kernel.RunAsync(isDoneEvaluator, history.ToString());
-                    bool isDone = bool.TryParse(evalResult.Result, out var b) && b;
+                    var evalResult = await kernel.InvokeAsync(
+                        isDoneEvaluator,
+                        new KernelArguments { ["input"] = history.ToString() }
+                    );
+                    bool isDone = bool.TryParse(evalResult.GetValue<string>(), out var b) && b;
                     if (isDone)
                     {
                         // 7) Invoke Complete() to commit and summarize
-                        var completeResult = await kernel.RunAsync(completeFunc, settings.Task);
-                        Console.WriteLine(completeResult.Result);
+                        var completeResult = await kernel.InvokeAsync(
+                            completeFunc,
+                            new KernelArguments { ["input"] = settings.Task }
+                        );
+                        Console.WriteLine(completeResult.GetValue<string>());
                         break;
                     }
                     // else, continue looping – evaluator wants more work
