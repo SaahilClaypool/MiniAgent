@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
@@ -108,81 +109,88 @@ public class DeveloperPlugin
             You should *almost always* use this over `WriteFile` to avoid overwriting the entire file.
             """
     )]
-    public string EditFile(string path, string replace, string with)
+    public string EditFile(string path, string searchText, string replacement)
     {
         if (!File.Exists(path))
-        {
             throw new FileNotFoundException($"File not found: {path}");
-        }
+
         var content = File.ReadAllText(path);
-        if (!content.Contains(replace))
+
+        if (content.Contains(searchText))
         {
-            // send replace to the closest span by finding the chunk of text with the closest edit distance.
-            // if the replacement text is multiple lines, then just find the line with the lowest edit distance to the first line
-            var lines = content.Split('\n');
-            var replacementLines = replace.Split('\n');
-            var firstLine = replacementLines[0];
-            var closestLine = lines
-                .Select(
-                    (line, idx) =>
-                        (
-                            line,
-                            distance: EditDistance(line.Trim(), firstLine.Trim()),
-                            idx
-                        )
-                )
-                .OrderBy(x => x.distance)
-                .FirstOrDefault();
-            if (closestLine.distance > (replace.Length / 2))
-            {
-                // if the closest line is more than half the length of the replacement text, then we should not replace it
-                // this is a heuristic to avoid replacing text that is not similar enough
+            // replace only the first occurrence
+            bool replaced = false;
+            content = Regex.Replace(
+                content,
+                Regex.Escape(searchText),
+                m =>
                 {
-                    throw new ArgumentException(
-                        $"The text to replace was not found in the file. The closest match was: {closestLine.line}"
-                    );
-                }
-            }
-            // if the closest line is less than half the length of the replacement text, then we should replace it
-            replace = string.Join(
-                "\n",
-                lines[
-                    closestLine.idx..new[]
+                    if (!replaced)
                     {
-                        lines.Length,
-                        closestLine.idx + 1,
-                        replacementLines.Length + closestLine.idx
-                    }.Min()
-                ]
+                        replaced = true;
+                        return replacement;
+                    }
+                    return m.Value;
+                },
+                RegexOptions.None,
+                TimeSpan.FromSeconds(1)
             );
         }
-        content = content.Replace(replace, with);
+        else
+        {
+            // fall back: find best matching line
+            var lines = content.Split('\n');
+            var best = lines
+                .Select(
+                    (line, idx) =>
+                        new
+                        {
+                            Line = line,
+                            Distance = EditDistance(line.Trim(), searchText.Trim()),
+                            Index = idx
+                        }
+                )
+                .OrderBy(x => x.Distance)
+                .First();
+
+            // threshold = half the length of the line we're comparing
+            if (best.Distance > best.Line.Length / 2)
+                throw new ArgumentException(
+                    $"Text to replace not found. Closest match (distance {best.Distance}): {best.Line}"
+                );
+
+            // replace that single line
+            lines[best.Index] = replacement;
+            content = string.Join('\n', lines);
+        }
+
         File.WriteAllText(path, content);
-        return $"wrote content to {path}";
+        return $"Wrote edits to {path}";
     }
 
     public static int EditDistance(string s, string t)
     {
         var d = new int[s.Length + 1, t.Length + 1];
         for (var i = 0; i <= s.Length; i++)
-        {
             d[i, 0] = i;
-        }
         for (var j = 0; j <= t.Length; j++)
-        {
             d[0, j] = j;
-        }
+
         for (var i = 1; i <= s.Length; i++)
         {
             for (var j = 1; j <= t.Length; j++)
             {
                 var cost = s[i - 1] == t[j - 1] ? 0 : 1;
                 d[i, j] = Math.Min(
-                    Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1),
-                    d[i - 1, j - 1] + cost
+                    Math.Min(
+                        d[i - 1, j] + 1, // deletion
+                        d[i, j - 1] + 1
+                    ), // insertion
+                    d[i - 1, j - 1] + cost // substitution
                 );
             }
         }
+
         return d[s.Length, t.Length];
     }
 }
