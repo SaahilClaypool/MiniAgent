@@ -23,6 +23,10 @@ app.Configure(config =>
         .AddCommand<AskCommand>("ask")
         .WithDescription("Process a user query using the agent.")
         .WithExample(new[] { "ask", "What is the answer?" });
+
+    config
+        .AddCommand<ChatCommand>("chat")
+        .WithDescription("Start interactive agent chat session.");
 });
 
 await app.RunAsync(args);
