@@ -26,6 +26,7 @@ public class AgentPlugin
     )]
     public async Task<string> StartSubtask(string taskDefinition)
     {
+        Console.WriteLine($"Starting subtask:\n{taskDefinition}");
         var kernel = kf.Create(LLMModel.Large, typeof(WebPlugin), typeof(DeveloperPlugin));
         var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
         var history = new ChatHistory();
@@ -37,7 +38,8 @@ public class AgentPlugin
             Your final message should be a summary of the entire process, including the final result of the task.
             Finally, you MUST call the {nameof(StatePlugin)} {nameof(
                 StatePlugin.Complete
-            )} tool to indicate you have finished
+            )} tool to indicate you have finished.
+            Do NOT ask for user input - just finish when you have done the task to the best of your ability. If you have questions, return them in your final response.
             """
         );
         history.AddUserMessage(taskDefinition);
@@ -50,10 +52,15 @@ public class AgentPlugin
         kernel.Plugins.AddFromObject(plugin);
         while (!finished && history.Where(m => m.Role == AuthorRole.Assistant).Count() < 10)
         {
+            Console.WriteLine("Working...");
             var result = await chatCompletionService.GetChatMessageContentAsync(
                 history,
                 kernel: kernel,
                 executionSettings: new() { FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(), }
+            );
+            if (!finished) { }
+            history.AddSystemMessage(
+                $"call the {nameof(StatePlugin.Complete)} tool if you are finished. otherwise, keep going"
             );
             Console.WriteLine($"----\n{result}\n-----");
         }
