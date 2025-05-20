@@ -1,5 +1,5 @@
-using Spectre.Console.Cli;
 using System.ComponentModel;
+using Spectre.Console.Cli;
 
 namespace MyAgent.Commands
 {
@@ -9,13 +9,12 @@ namespace MyAgent.Commands
         public string Prompt { get; set; } = string.Empty;
     }
 
-    public class AskCommand : Command<AskSettings>
+    public class AskCommand(AgentPlugin agentPlugin) : AsyncCommand<AskSettings>
     {
-        public override int Execute(CommandContext context, AskSettings settings)
+        public override async Task<int> ExecuteAsync(CommandContext context, AskSettings settings)
         {
-            // You will implement the logic here using the kernel.
-            // For now, just echo the prompt.
-            Console.WriteLine($"You asked: {settings.Prompt}");
+            var response = await agentPlugin.StartSubtask(settings.Prompt);
+            Console.WriteLine($"Final Response\n\n{response}");
             return 0;
         }
     }
