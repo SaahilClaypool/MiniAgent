@@ -11,69 +11,15 @@ using Spectre.Console.Cli;
 
 namespace MyAgent.Commands
 {
-    // ─────────────────────────────────────────────────────────────────────────────
-    // 1) Native plugins (strongly-typed methods)
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Generates a slug-safe Git branch name from a task description.</summary>
-    public sealed class BranchPlugin
-    {
-        [KernelFunction, Description("Return a short, slug-safe branch name")]
-        public string GenerateBranchSlug([Description("Task description")] string task)
-        {
-            // Simple local slug-generation; fallback to GUID if empty
-            var slug = Regex.Replace(task.ToLowerInvariant(), @"[^a-z0-9\s-]", "");
-            slug = Regex.Replace(slug, @"\s+", " ").Trim();
-            slug = string.Join('-', slug.Split(' ').Take(6));
-            return string.IsNullOrWhiteSpace(slug) ? Guid.NewGuid().ToString("N") : slug;
-        }
-    }
-
-    /// <summary>Evaluates whether the conversation indicates task completion.</summary>
-    public sealed class EvalPlugin
-    {
-        [KernelFunction, Description("Return true if the user’s task is done, else false")]
-        public bool IsTaskDone([Description("Full conversation so far")] string conversation)
-        {
-            // Simple heuristic; replace with richer logic or an LLM semantic function if desired
-            return conversation.Contains("[DONE]", StringComparison.OrdinalIgnoreCase);
-        }
-
-        [KernelFunction, Description("Summarise completed work for the user")]
-        public string Complete([Description("Original task")] string task) =>
-            $"✅ Task “{task}” finished and committed. All set!";
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // 2) CLI command
-    // ─────────────────────────────────────────────────────────────────────────────
-
     public class WorkInBackgroundSettings : CommandSettings
     {
         [CommandArgument(0, "<task>")]
         public string Task { get; set; } = string.Empty;
     }
 
-    public sealed class WorkInBackgroundCommand : AsyncCommand<WorkInBackgroundSettings>
+    public sealed class WorkInBackgroundCommand(AgentPlugin agentPlugin, KernelFactory kf)
+        : AsyncCommand<WorkInBackgroundSettings>
     {
-        private readonly KernelFactory _kernelFactory;
-        private readonly WebPlugin _web;
-        private readonly DeveloperPlugin _dev;
-        private readonly AgentPlugin _agent;
-
-        public WorkInBackgroundCommand(
-            KernelFactory kernelFactory,
-            WebPlugin web,
-            DeveloperPlugin dev,
-            AgentPlugin agent
-        )
-        {
-            _kernelFactory = kernelFactory;
-            _web = web;
-            _dev = dev;
-            _agent = agent;
-        }
-
         public override async Task<int> ExecuteAsync(
             CommandContext context,
             WorkInBackgroundSettings settings
@@ -81,80 +27,14 @@ namespace MyAgent.Commands
         {
             try
             {
-                // a) Build kernel and register plugins
-                var kernel = _kernelFactory.Create(
-                    LLMModel.Large,
-                    typeof(WebPlugin),
-                    typeof(DeveloperPlugin),
-                    typeof(AgentPlugin)
-                );
-
-                kernel.Plugins.AddFromType<BranchPlugin>("Branch");
-                kernel.Plugins.AddFromType<EvalPlugin>("Eval");
-
-                // b) Generate branch name natively
-                var slug = await kernel.InvokeAsync<string>(
-                    "Branch",
-                    "GenerateBranchSlug",
-                    new KernelArguments { ["task"] = settings.Task }
-                );
-
+                var slug = await CreateBranchName(settings.Task);
                 var branchName = $"bg-{slug}";
                 var worktreePath = GitHelper.CreateWorktree(branchName);
                 Console.WriteLine($"Created worktree at: {worktreePath}");
                 Directory.SetCurrentDirectory(worktreePath);
 
-                // c) Prepare chat-completion service
-                var chatSvc = kernel.GetRequiredService<IChatCompletionService>();
-
-                var history = new ChatHistory();
-                history.AddSystemMessage(
-                    "You are a background agent. Continue working until the task is solved. "
-                        + "Mark your final answer with [DONE]."
-                );
-                history.AddUserMessage(settings.Task);
-
-                var buffer = new StringBuilder();
-
-                while (true)
-                {
-                    await foreach (
-                        var chunk in chatSvc.GetStreamingChatMessageContentsAsync(
-                            history,
-                            kernel: kernel,
-                            executionSettings: new PromptExecutionSettings
-                            {
-                                FunctionChoiceBehavior = FunctionChoiceBehavior.Auto()
-                            }
-                        )
-                    )
-                    {
-                        Console.Write(chunk);
-                        buffer.Append(chunk);
-                    }
-                    Console.WriteLine();
-
-                    history.AddAssistantMessage(buffer.ToString());
-                    buffer.Clear();
-
-                    // d) Ask EvalPlugin if we’re done
-                    var isDone = await kernel.InvokeAsync<bool>(
-                        "Eval",
-                        "IsTaskDone",
-                        new KernelArguments { ["conversation"] = FormatHistory(history) }
-                    );
-
-                    if (isDone)
-                    {
-                        var summary = await kernel.InvokeAsync<string>(
-                            "Eval",
-                            "Complete",
-                            new KernelArguments { ["task"] = settings.Task }
-                        );
-                        Console.WriteLine(summary);
-                        break;
-                    }
-                }
+                var response = await agentPlugin.StartSubtask(settings.Task);
+                Console.WriteLine($"Final Response\n\n{response}");
 
                 return 0;
             }
@@ -163,6 +43,25 @@ namespace MyAgent.Commands
                 Console.WriteLine($"Error: {ex.Message}");
                 return 1;
             }
+        }
+
+        private async Task<string> CreateBranchName(string task)
+        {
+            var kernel = kf.Create(LLMModel.Small);
+            var history = new ChatHistory();
+            history.AddSystemMessage(
+                """
+                Given this task, create a branch naem
+                """
+            );
+            var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
+            var msg = await chatCompletionService.GetChatMessageContentAsync(history);
+            var content = msg.Content ?? Guid.NewGuid().ToString();
+            // Simple local slug-generation; fallback to GUID if empty
+            var slug = Regex.Replace(content.ToLowerInvariant(), @"[^a-z0-9\s-]", "");
+            slug = Regex.Replace(slug, @"\s+", " ").Trim();
+            slug = string.Join('-', slug.Split(' ').Take(6));
+            return string.IsNullOrWhiteSpace(slug) ? Guid.NewGuid().ToString("N") : slug;
         }
 
         private static string FormatHistory(ChatHistory history)

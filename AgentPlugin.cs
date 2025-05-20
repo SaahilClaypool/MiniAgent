@@ -9,7 +9,12 @@ public class AgentPlugin
     // DeveloperPlugin is referenced from DeveloperPlugin.cs
 
     private readonly KernelFactory kf;
-    public AgentPlugin(KernelFactory kf) { this.kf = kf; }
+
+    public AgentPlugin(KernelFactory kf)
+    {
+        this.kf = kf;
+    }
+
     [KernelFunction]
     [Description(
         """
@@ -25,19 +30,44 @@ public class AgentPlugin
         var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
         var history = new ChatHistory();
         history.AddSystemMessage(
-            """
+            $"""
             You are an agent - please keep going until the user’s query is completely resolved, before ending your turn and yielding back to the user. Only terminate your turn when you are sure that the problem is solved.
             You MUST plan extensively before each function call, and reflect extensively on the outcomes of the previous function calls. DO NOT do this entire process by making function calls only, as this can impair your ability to solve the problem and think insightfully.
 
             Your final message should be a summary of the entire process, including the final result of the task.
+            Finally, you MUST call the {nameof(StatePlugin)} {nameof(
+                StatePlugin.Complete
+            )} tool to indicate you have finished
             """
         );
         history.AddUserMessage(taskDefinition);
-        var result = await chatCompletionService.GetChatMessageContentAsync(
-            history,
-            kernel: kernel,
-            executionSettings: new() { FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(), }
-        );
-        return result.Content!;
+        var finished = false;
+        var plugin = new StatePlugin(() =>
+        {
+            finished = true;
+            return Task.CompletedTask;
+        });
+        kernel.Plugins.AddFromObject(plugin);
+        while (!finished && history.Where(m => m.Role == AuthorRole.Assistant).Count() < 10)
+        {
+            var result = await chatCompletionService.GetChatMessageContentAsync(
+                history,
+                kernel: kernel,
+                executionSettings: new() { FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(), }
+            );
+            Console.WriteLine($"----\n{result}\n-----");
+        }
+        return history.Where(m => m.Role == AuthorRole.Assistant).Last()?.Content ?? "No Content";
+    }
+}
+
+public class StatePlugin(Func<Task> onComplete)
+{
+    [KernelFunction]
+    [Description("Call this to mark the task as completed")]
+    public async Task<string> Complete()
+    {
+        await onComplete();
+        return "Completed";
     }
 }
