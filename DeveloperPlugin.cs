@@ -215,6 +215,68 @@ public class DeveloperPlugin
         return $"Wrote edits to {path}";
     }
 
+    [KernelFunction]
+    [Description(
+        "Runs a CLI command after confirming with the user. If 'n' or 'no', denies. If 'y' or 'yes', runs."
+    )]
+    public async Task<string> RunCliCommand(string command)
+    {
+        _logger.LogInformation(
+            $"Proposed CLI command: '{command}'. Waiting for user confirmation."
+        );
+        Console.WriteLine($"Confirm running command '{command}'? (y/n)");
+        var confirmation = Console.ReadLine()?.ToLowerInvariant();
+
+        if (confirmation == "y" || confirmation == "yes")
+        {
+            _logger.LogInformation($"User confirmed. Running command: '{command}'");
+            try
+            {
+                var psi = new ProcessStartInfo("cmd.exe", $"/c \"{command}\"")
+                {
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using var process = Process.Start(psi);
+                var output = await process!.StandardOutput.ReadToEndAsync();
+                var error = await process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync();
+
+                if (process.ExitCode == 0)
+                {
+                    _logger.LogInformation($"Command executed successfully. Output: {output}");
+                    return $"Command executed successfully. Output: {output}";
+                }
+                else
+                {
+                    _logger.LogError(
+                        $"Command failed with exit code {process.ExitCode}. Error: {error}"
+                    );
+                    return $"Command failed with exit code {process.ExitCode}. Error: {error} Output: {output}";
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error executing command: {ex.Message}");
+                return $"Error executing command: {ex.Message}";
+            }
+        }
+        else if (confirmation == "n" || confirmation == "no")
+        {
+            _logger.LogInformation("User denied command execution.");
+            return "Command execution denied by user.";
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Invalid confirmation input. Command execution denied by default."
+            );
+            return "Invalid confirmation input. Command execution denied.";
+        }
+    }
+
     public static int EditDistance(string s, string t)
     {
         var d = new int[s.Length + 1, t.Length + 1];

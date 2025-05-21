@@ -66,16 +66,23 @@ public class KernelFactory
             builder.Plugins.AddFromObject(plugin);
         }
         var kernel = builder.Build();
-        kernel.FunctionInvocationFilters.Add(new LoggingFilter(services.GetRequiredService<ILogger<Kernel>>()));
+        kernel.FunctionInvocationFilters.Add(
+            new LoggingFilter(services.GetRequiredService<ILogger<Kernel>>())
+        );
         return kernel;
     }
 }
 
 public class LoggingFilter(ILogger logger) : IFunctionInvocationFilter
 {
-    public async Task OnFunctionInvocationAsync(FunctionInvocationContext context, Func<FunctionInvocationContext, Task> next)
+    public async Task OnFunctionInvocationAsync(
+        FunctionInvocationContext context,
+        Func<FunctionInvocationContext, Task> next
+    )
     {
-        Console.WriteLine($"Calling {context.Function} with {context.Arguments}");
+        Console.WriteLine(
+            $"Calling [{context.Function}(\n\t{string.Join(",\n\t", context.Arguments.Select(a => $"{a.Key}={a.Value}"))}\n)]"
+        );
         await next(context);
     }
 }
