@@ -45,6 +45,7 @@ public sealed class WorkInBackgroundCommand(AgentPlugin agentPlugin, KernelFacto
         }
         catch (Exception ex)
         {
+            Console.WriteLine(ex);
             Console.WriteLine($"Error: {ex.Message}");
             return 1;
         }

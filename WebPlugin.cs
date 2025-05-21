@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Net.Http;
-using Microsoft.Playwright;
 using Microsoft.Extensions.Logging;
+using Microsoft.Playwright;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 
@@ -35,25 +35,45 @@ public class WebPlugin
         return result.Content!;
     }
 
-    // TODO: use playwright
     [KernelFunction]
     [Description(
-        "Reads the content of a web page given its URL. Returns the raw text content of the page."
+        "Reads the content of a web page given its URL. Set useBrowser to true to use a browser (for dynamic or JavaScript-heavy pages), or false to use a simple HTTP GET request (for static pages). Returns the raw text content of the page."
     )]
-    public async Task<string> ReadPage(string url)
+    public async Task<string> ReadPage(string url, bool useBrowser = true)
     {
-        _logger.LogInformation($"Reading page: {url}");
+        _logger.LogInformation($"Reading page: {url} (useBrowser={useBrowser})");
+        if (!useBrowser)
+        {
+            try
+            {
+                using var httpClient = new HttpClient();
+                var response = await httpClient.GetAsync(url);
+                response.EnsureSuccessStatusCode();
+                var content = await response.Content.ReadAsStringAsync();
+                _logger.LogInformation(
+                    $"Read {content.Length} characters from {url} using HTTP GET"
+                );
+                return content;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Failed to read page with HTTP GET: {url}");
+                return $"Error reading page with HTTP GET: {ex.Message}";
+            }
+        }
         try
         {
             using var playwright = await Playwright.CreateAsync();
-            await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
+            await using var browser = await playwright.Chromium.LaunchAsync(
+                new BrowserTypeLaunchOptions { Headless = true }
+            );
             var page = await browser.NewPageAsync();
 
             await page.GotoAsync(url);
             await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded); // Using DOMContentLoaded for potentially faster load, adjust if needed
 
             var content = await page.ContentAsync();
-            _logger.LogInformation($"Read {content.Length} characters from {url}");
+            _logger.LogInformation($"Read {content.Length} characters from {url} using browser");
             return content;
         }
         catch (Exception ex)
