@@ -50,7 +50,10 @@ public class AgentPlugin
             return Task.CompletedTask;
         });
         kernel.Plugins.AddFromObject(plugin);
-        while (!finished && history.Where(m => m.Role == AuthorRole.Assistant).Count() < 10)
+        var maxIterations = 10;
+        while (
+            !finished && history.Where(m => m.Role == AuthorRole.Assistant).Count() < maxIterations
+        )
         {
             Console.WriteLine("Working...");
             var result = await chatCompletionService.GetChatMessageContentAsync(

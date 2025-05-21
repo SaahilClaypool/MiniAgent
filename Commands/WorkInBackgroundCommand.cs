@@ -9,70 +9,92 @@ using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Spectre.Console.Cli;
 
-namespace MyAgent.Commands
+namespace MyAgent.Commands;
+
+public class WorkInBackgroundSettings : CommandSettings
 {
-    public class WorkInBackgroundSettings : CommandSettings
+    [CommandArgument(0, "<task>")]
+    public string Task { get; set; } = string.Empty;
+}
+
+public sealed class WorkInBackgroundCommand(AgentPlugin agentPlugin, KernelFactory kf)
+    : AsyncCommand<WorkInBackgroundSettings>
+{
+    public override async Task<int> ExecuteAsync(
+        CommandContext context,
+        WorkInBackgroundSettings settings
+    )
     {
-        [CommandArgument(0, "<task>")]
-        public string Task { get; set; } = string.Empty;
+        try
+        {
+            var slug = await CreateBranchName(settings.Task);
+            var branchName = $"bg-{slug}";
+            var worktreePath = GitHelper.CreateWorktree(branchName);
+            Console.WriteLine($"Created worktree at: {worktreePath}");
+            Directory.SetCurrentDirectory(worktreePath);
+
+            var response = await agentPlugin.StartSubtask(settings.Task);
+            Console.WriteLine($"Final Response\n\n{response}");
+
+            var commit = await CreateCommit(response);
+            Console.WriteLine($"Making a commit...{response}");
+
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+            return 1;
+        }
     }
 
-    public sealed class WorkInBackgroundCommand(AgentPlugin agentPlugin, KernelFactory kf)
-        : AsyncCommand<WorkInBackgroundSettings>
+    private async Task<string> CreateBranchName(string task)
     {
-        public override async Task<int> ExecuteAsync(
-            CommandContext context,
-            WorkInBackgroundSettings settings
-        )
-        {
-            try
-            {
-                var slug = await CreateBranchName(settings.Task);
-                var branchName = $"bg-{slug}";
-                var worktreePath = GitHelper.CreateWorktree(branchName);
-                Console.WriteLine($"Created worktree at: {worktreePath}");
-                Directory.SetCurrentDirectory(worktreePath);
+        var kernel = kf.Create(LLMModel.Small);
+        var history = new ChatHistory();
+        history.AddUserMessage(
+            $"""
+            Help me create a branch name for this task - it should be short and clear.
+            <task>
+            {task}
+            </task>
+            """
+        );
+        var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
+        var msg = await chatCompletionService.CompleteJson<BranchResponse>(history);
+        var content = msg.BranchName ?? Guid.NewGuid().ToString();
+        // Simple local slug-generation; fallback to GUID if empty
+        var slug = Regex.Replace(content.ToLowerInvariant(), @"[^a-z0-9\s-]", "");
+        slug = Regex.Replace(slug, @"\s+", " ").Trim();
+        slug = string.Join('-', slug.Split(' ').Take(6));
+        return string.IsNullOrWhiteSpace(slug) ? Guid.NewGuid().ToString("N") : slug;
+    }
 
-                var response = await agentPlugin.StartSubtask(settings.Task);
-                Console.WriteLine($"Final Response\n\n{response}");
+    private async Task<string> CreateCommit(string task)
+    {
+        var kernel = kf.Create(LLMModel.Small);
+        var history = new ChatHistory();
+        history.AddUserMessage(
+            $"""
+            Write me a git commit based on this task summary
+            <changes>
+            {task}
+            </changes>
+            """
+        );
+        var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
+        var msg = await chatCompletionService.CompleteJson<CommitResponse>(history);
+        return $"{msg.Title}\n\n{msg.Summary}";
+    }
 
-                return 0;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Error: {ex.Message}");
-                return 1;
-            }
-        }
+    private class BranchResponse
+    {
+        public required string BranchName { get; set; }
+    }
 
-        private async Task<string> CreateBranchName(string task)
-        {
-            var kernel = kf.Create(LLMModel.Small);
-            var history = new ChatHistory();
-            history.AddSystemMessage(
-                """
-                Given this task, create a branch naem
-                """
-            );
-            var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
-            var msg = await chatCompletionService.GetChatMessageContentAsync(history);
-            var content = msg.Content ?? Guid.NewGuid().ToString();
-            // Simple local slug-generation; fallback to GUID if empty
-            var slug = Regex.Replace(content.ToLowerInvariant(), @"[^a-z0-9\s-]", "");
-            slug = Regex.Replace(slug, @"\s+", " ").Trim();
-            slug = string.Join('-', slug.Split(' ').Take(6));
-            return string.IsNullOrWhiteSpace(slug) ? Guid.NewGuid().ToString("N") : slug;
-        }
-
-        private static string FormatHistory(ChatHistory history)
-        {
-            var sb = new StringBuilder();
-            // iterate all messages in chronological order
-            foreach (var message in history)
-            {
-                sb.AppendLine($"[{message.Role}] {message.Content}\n----");
-            }
-            return sb.ToString();
-        }
+    private class CommitResponse
+    {
+        public required string Title { get; set; }
+        public required string Summary { get; set; }
     }
 }

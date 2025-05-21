@@ -45,11 +45,11 @@ public static class GitHelper
         // ────────────────────────────────────────────────────────────────────────────────
         var revParse = new ProcessStartInfo("git")
         {
-            WorkingDirectory    = gitRoot,
+            WorkingDirectory = gitRoot,
             RedirectStandardOutput = true,
-            RedirectStandardError  = true,
-            UseShellExecute        = false,
-            Arguments              = "rev-parse --abbrev-ref HEAD"
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            Arguments = "rev-parse --abbrev-ref HEAD"
         };
         string currentBranch;
         using (var rev = Process.Start(revParse)!)
@@ -97,12 +97,12 @@ public static class GitHelper
         // git worktree add
         var psi = new ProcessStartInfo("git")
         {
-            WorkingDirectory    = gitRoot,
+            WorkingDirectory = gitRoot,
             RedirectStandardOutput = true,
-            RedirectStandardError  = true,
-            UseShellExecute        = false,
+            RedirectStandardError = true,
+            UseShellExecute = false,
             // add a new branch named `branchName` based on the current branch
-            Arguments              = $"worktree add -b \"{branchName}\" \"{worktreePath}\" \"{currentBranch}\""
+            Arguments = $"worktree add -b \"{branchName}\" \"{worktreePath}\" \"{currentBranch}\""
         };
         using (var p = Process.Start(psi))
         {
@@ -115,5 +115,33 @@ public static class GitHelper
         }
 
         return worktreePath;
+    }
+
+    /// <summary>
+    /// Creates a git commit with the provided message in the current git repository.
+    /// </summary>
+    public static void CreateCommit(string message)
+    {
+        var gitRoot = GetGitRoot(Directory.GetCurrentDirectory());
+        if (gitRoot == null)
+            throw new InvalidOperationException("Not inside a git repo.");
+
+        var psi = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = gitRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            Arguments = $"commit -am \"{message.Replace("\"", "\\\"")}\""
+        };
+        using (var p = Process.Start(psi))
+        {
+            p!.WaitForExit();
+            if (p.ExitCode != 0)
+            {
+                var err = p.StandardError.ReadToEnd();
+                throw new Exception($"git commit failed: {err}");
+            }
+        }
     }
 }
