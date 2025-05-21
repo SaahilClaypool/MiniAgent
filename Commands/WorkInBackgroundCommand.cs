@@ -32,6 +32,7 @@ public sealed class WorkInBackgroundCommand(AgentPlugin agentPlugin, KernelFacto
             var worktreePath = GitHelper.CreateWorktree(branchName);
             Console.WriteLine($"Created worktree at: {worktreePath}");
             Directory.SetCurrentDirectory(worktreePath);
+            Console.WriteLine("CURRENT: " + Directory.GetCurrentDirectory());
 
             var response = await agentPlugin.StartSubtask(settings.Task);
 
