@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
 using System.ComponentModel;
@@ -9,12 +10,19 @@ using System.Threading.Tasks;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 
-public class DeveloperPlugin
-{
+
+    private readonly ILogger<DeveloperPlugin> _logger;
+
+    public DeveloperPlugin(ILogger<DeveloperPlugin> logger)
+    {
+        _logger = logger;
+    }
+
     [KernelFunction]
     [Description("Get repository symbol overview")]
     public async Task<string> RepositoryOverview()
     {
+        _logger.LogInformation("Getting repository overview...");
         var psi = new ProcessStartInfo("aider", "--show-repo-map")
         {
             RedirectStandardOutput = true,
@@ -22,6 +30,7 @@ public class DeveloperPlugin
         };
         var proc = Process.Start(psi);
         var repoMap = await proc!.StandardOutput.ReadToEndAsync();
+        _logger.LogInformation($"Repository overview:\n{repoMap}");
         return repoMap;
     }
 
@@ -29,6 +38,7 @@ public class DeveloperPlugin
     [Description("Search local files using ripgrep")]
     public async Task<string> Rg(string search)
     {
+        _logger.LogInformation($"Searching for '{search}' using ripgrep...");
         var rgPath = "rg";
         var arguments = $"\"{search}\" -C 2 --max-columns 200 ";
 
@@ -52,8 +62,10 @@ public class DeveloperPlugin
 
         if (process.ExitCode != 0)
         {
+            _logger.LogError($"Ripgrep failed with exit code {process.ExitCode}: {error}");
             throw new Exception($"Ripgrep failed with exit code {process.ExitCode}: {error}");
         }
+        _logger.LogInformation($"Ripgrep results:\n{output}");
 
         return output;
     }
@@ -75,6 +87,7 @@ public class DeveloperPlugin
     )]
     public string Think(string thought)
     {
+        _logger.LogInformation($"Thinking: {thought}");
         return $"Your thought has been logged";
     }
 
@@ -82,15 +95,32 @@ public class DeveloperPlugin
     [Description("Read File")]
     public string ReadFile(string path)
     {
-        return File.ReadAllText(path);
+        _logger.LogTrace($"Reading file: {path}");
+        if (!File.Exists(path))
+        {
+            _logger.LogError($"File not found: {path}");
+            throw new FileNotFoundException($"File not found: {path}");
+        }
+        var content = File.ReadAllText(path);
+        _logger.LogTrace($"Read file content (first 100 chars): {content.Substring(0, Math.Min(content.Length, 100))}");
+        return content;
     }
 
     [KernelFunction]
     [Description("list files")]
     public string ListFiles(string path)
     {
+        _logger.LogTrace($"Listing files in directory: {path}");
+        if (!Directory.Exists(path))
+        {
+            _logger.LogError($"Directory not found: {path}");
+            throw new DirectoryNotFoundException($"Directory not found: {path}");
+        }
         var files = string.Join(" ", Directory.GetFiles(path));
         var directories = string.Join(" ", Directory.GetDirectories(path));
+        _logger.LogTrace($"Files in {path}: {files}");
+        _logger.LogTrace($"Directories in {path}: {directories}");
+
         return $"Files: {files} Directories: {directories}";
     }
 
@@ -98,7 +128,9 @@ public class DeveloperPlugin
     [Description("Write File")]
     public string WriteFile(string path, string content)
     {
+        _logger.LogTrace($"Writing file: {path}");
         File.WriteAllText(path, content);
+        _logger.LogTrace($"Finished writing file: {path}");
         return $"wrote content to {path}";
     }
 
@@ -111,8 +143,12 @@ public class DeveloperPlugin
     )]
     public string EditFile(string path, string searchText, string replacement)
     {
+        _logger.LogTrace($"Editing file: {path} replacing '{searchText}' with '{replacement}'");
         if (!File.Exists(path))
+        {
+            _logger.LogError($"File not found: {path}");
             throw new FileNotFoundException($"File not found: {path}");
+        }
 
         var content = File.ReadAllText(path);
 
@@ -135,6 +171,7 @@ public class DeveloperPlugin
                 RegexOptions.None,
                 TimeSpan.FromSeconds(1)
             );
+            _logger.LogTrace($"Replaced first occurrence of '{searchText}' in {path}");
         }
         else
         {
@@ -155,16 +192,23 @@ public class DeveloperPlugin
 
             // threshold = half the length of the line we're comparing
             if (best.Distance > best.Line.Length / 2)
+            {
+                _logger.LogError(
+                    $"Text to replace not found. Closest match (distance {best.Distance}): {best.Line}"
+                );
                 throw new ArgumentException(
                     $"Text to replace not found. Closest match (distance {best.Distance}): {best.Line}"
                 );
+            }
 
             // replace that single line
             lines[best.Index] = replacement;
             content = string.Join('\n', lines);
+            _logger.LogTrace($"Replaced line {best.Index} in {path} with '{replacement}'");
         }
 
         File.WriteAllText(path, content);
+        _logger.LogTrace($"Finished editing file: {path}");
         return $"Wrote edits to {path}";
     }
 
