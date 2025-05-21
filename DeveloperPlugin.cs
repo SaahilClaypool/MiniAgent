@@ -232,13 +232,40 @@ public class DeveloperPlugin
             _logger.LogInformation($"User confirmed. Running command: '{command}'");
             try
             {
-                var psi = new ProcessStartInfo("cmd.exe", $"/c \"{command}\"")
+                var psi = new ProcessStartInfo()
                 {
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
                     CreateNoWindow = true
                 };
+                if (
+                    System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                        System.Runtime.InteropServices.OSPlatform.Windows
+                    )
+                )
+                {
+                    psi.FileName = "cmd.exe";
+                    psi.Arguments = $"/c \"{command}\"";
+                }
+                else if (
+                    System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                        System.Runtime.InteropServices.OSPlatform.Linux
+                    )
+                    || System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                        System.Runtime.InteropServices.OSPlatform.OSX
+                    )
+                )
+                {
+                    psi.FileName = "/bin/sh"; // or sh
+                    psi.Arguments = $"-c \"{command}\"";
+                }
+                else
+                {
+                    // Fallback or throw an exception for unsupported OS
+                    _logger.LogError("Unsupported operating system.");
+                    return "Error: Unsupported operating system.";
+                }
                 using var process = Process.Start(psi);
                 var output = await process!.StandardOutput.ReadToEndAsync();
                 var error = await process.StandardError.ReadToEndAsync();
