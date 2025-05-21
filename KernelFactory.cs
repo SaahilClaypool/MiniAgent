@@ -18,12 +18,13 @@ public class KernelFactory
         this.services = services;
     }
 
-    public Kernel Create(LLMModel model, params Type[] plugins)
+    public Kernel Create(LLMModel model, params IEnumerable<Type> plugins)
     {
-        var (endpoint, apiKey, largeModel, smallModel, searchModel) = (
+        var (endpoint, apiKey, largeModel, mediumModel, smallModel, searchModel) = (
             config["AG_Chat:Endpoint"] ?? throw new ArgumentException("AG_Chat:Endpoint"),
             config["AG_Chat:ApiKey"] ?? throw new ArgumentException("AG_Chat:ApiKey"),
             config["AG_Chat:LargeModel"] ?? throw new ArgumentException("AG_Chat:LargeModel"),
+            config["AG_Chat:MediumModel"] ?? throw new ArgumentException("AG_Chat:MediumModel"),
             config["AG_Chat:SmallModel"] ?? throw new ArgumentException("AG_Chat:SmallModel"),
             config["AG_Chat:SearchModel"] ?? throw new ArgumentException("AG_Chat:SearchModel")
         );
@@ -43,6 +44,13 @@ public class KernelFactory
         {
             case LLMModel.Large:
                 builder.AddOpenAIChatCompletion(largeModel, apiKey: apiKey, httpClient: chatClient);
+                break;
+            case LLMModel.Medium:
+                builder.AddOpenAIChatCompletion(
+                    mediumModel,
+                    apiKey: apiKey,
+                    httpClient: chatClient
+                );
                 break;
             case LLMModel.Small:
                 builder.AddOpenAIChatCompletion(smallModel, apiKey: apiKey, httpClient: chatClient);

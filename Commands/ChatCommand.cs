@@ -36,7 +36,7 @@ public class ChatCommand : AsyncCommand<ChatSettings>
     {
         // --- replicate your old chat loop here ---
         var kernel = _kernelFactory.Create(
-            LLMModel.Large,
+            LLMModel.Medium,
             typeof(WebPlugin),
             typeof(DeveloperPlugin),
             typeof(AgentPlugin)

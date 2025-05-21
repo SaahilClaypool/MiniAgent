@@ -218,7 +218,7 @@ public class DeveloperPlugin
         return $"Wrote edits to {path}";
     }
 
-    [KernelFunction]
+    // [KernelFunction]
     [Description(
         "Runs a CLI command after confirming with the user. If 'n' or 'no', denies. If 'y' or 'yes', runs."
     )]

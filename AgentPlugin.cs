@@ -29,22 +29,67 @@ public class AgentPlugin
     )]
     public async Task<string> StartSubtask(string taskDefinition)
     {
-        _logger.LogInformation($"Starting subtask:\n{taskDefinition}");
-        var kernel = kf.Create(LLMModel.Large, typeof(WebPlugin), typeof(DeveloperPlugin));
-        var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
-        var history = new ChatHistory();
-        history.AddSystemMessage(
-            $"""
+        var prompt = $"""
             You are an agent - please keep going until the user’s query is completely resolved, before ending your turn and yielding back to the user. Only terminate your turn when you are sure that the problem is solved.
             You MUST plan extensively before each function call, and reflect extensively on the outcomes of the previous function calls. DO NOT do this entire process by making function calls only, as this can impair your ability to solve the problem and think insightfully.
 
             Your final message should be a summary of the entire process, including the final result of the task.
             Finally, you MUST call the {nameof(StatePlugin)} {nameof(
-                StatePlugin.Complete
-            )} tool to indicate you have finished.
+                        StatePlugin.Complete
+                    )} tool to indicate you have finished.
             Do NOT ask for user input - just finish when you have done the task to the best of your ability. If you have questions, return them in your final response.
-            """
+            """;
+        return await StartSubtask(
+            taskDefinition,
+            LLMModel.Medium,
+            prompt,
+            typeof(WebPlugin),
+            typeof(DeveloperPlugin)
         );
+    }
+
+    [KernelFunction]
+    [Description(
+        """
+            Ask an expert agent a question. Make sure you provide a detailed task definition including the output you need. Make sure to provide as much context as you can.
+            Use this in the following circumstances:
+            - When you need to do a complex task, ask for a plan of action for how you will solve it
+            - When you need to solve a complicated problems (algorithms, coding etc.) ask this agent to help you solve it
+            """
+    )]
+    public async Task<string> UseAnExpert(string question)
+    {
+        var prompt = $"""
+            You are an expert agent - you should answer the users question to help them solve their task.
+
+            Your final message should be a summary of the entire process, including the final result of the task.
+            You must provide ALL of the information to the user in your final summary. They will not see anything else you've said.
+            Finally, you MUST call the {nameof(StatePlugin)} {nameof(
+                        StatePlugin.Complete
+                    )} tool to indicate you have finished.
+            Do NOT ask for user input - just finish when you have done the task to the best of your ability. If you have questions, return them in your final response.
+            """;
+        return await StartSubtask(
+            question,
+            LLMModel.Large,
+            prompt,
+            typeof(WebPlugin),
+            typeof(DeveloperPlugin)
+        );
+    }
+
+    private async Task<string> StartSubtask(
+        string taskDefinition,
+        LLMModel model,
+        string prompt,
+        params IEnumerable<Type> plugins
+    )
+    {
+        _logger.LogInformation($"Starting subtask:\n{taskDefinition}");
+        var kernel = kf.Create(LLMModel.Medium, plugins);
+        var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
+        var history = new ChatHistory();
+        history.AddSystemMessage(prompt);
         history.AddUserMessage(taskDefinition);
         var finished = false;
         var plugin = new StatePlugin(() =>
@@ -66,7 +111,7 @@ public class AgentPlugin
             );
             if (!finished) { }
             history.AddSystemMessage(
-                $"call the {nameof(StatePlugin.Complete)} tool if you are finished. otherwise, keep going"
+                $"call the {nameof(StatePlugin.Complete)} tool if you are finished. otherwise, keep thinking"
             );
             _logger.LogInformation($"----\n{result}\n-----");
         }
