@@ -142,6 +142,9 @@ public class DeveloperPlugin
         """
             Edit a file by providing the path, the text to replace, and the replacement text.
             You should *almost always* use this over `WriteFile` to avoid overwriting the entire file.
+            Each searchText should be a contiguous chunk of lines to search for in the existing source code.
+            You will replace ALL of the searchText with the new text.
+            Make sure you search for ALL of the text you need to replace.
             """
     )]
     public string EditFile(string path, string searchText, string replacement)
