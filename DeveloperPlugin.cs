@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
 using System.ComponentModel;
@@ -7,10 +6,12 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 
-
+public class DeveloperPlugin
+{
     private readonly ILogger<DeveloperPlugin> _logger;
 
     public DeveloperPlugin(ILogger<DeveloperPlugin> logger)
@@ -102,7 +103,9 @@ using Microsoft.SemanticKernel.ChatCompletion;
             throw new FileNotFoundException($"File not found: {path}");
         }
         var content = File.ReadAllText(path);
-        _logger.LogTrace($"Read file content (first 100 chars): {content.Substring(0, Math.Min(content.Length, 100))}");
+        _logger.LogTrace(
+            $"Read file content (first 100 chars): {content.Substring(0, Math.Min(content.Length, 100))}"
+        );
         return content;
     }
 
