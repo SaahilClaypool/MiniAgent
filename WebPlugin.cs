@@ -18,15 +18,20 @@ public class WebPlugin
 
     [KernelFunction]
     [Description(
-        "Search the internet using natural language. You'll receive a summary of what you search for."
+        """
+            Ask an assistant to search the internet for you.
+            This is not a google search - you should write a longer description of the result you want,
+            and the assistant will search the web and find the results for you.
+            You can also specify what information you want extracted from the output.
+            """
     )]
-    public async Task<string> Search(string search)
+    public async Task<string> Search(string searchRequest)
     {
-        _logger.LogInformation($"Searching for: {search}");
+        _logger.LogInformation($"Searching for: {searchRequest}");
         var kernel = kf.Create(LLMModel.Search);
         var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
         var history = new ChatHistory();
-        history.AddUserMessage(search);
+        history.AddUserMessage(searchRequest);
         var result = await chatCompletionService.GetChatMessageContentAsync(
             history,
             kernel: kernel
