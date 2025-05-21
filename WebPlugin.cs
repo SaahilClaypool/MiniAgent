@@ -37,9 +37,9 @@ public class WebPlugin
 
     [KernelFunction]
     [Description(
-        "Reads the content of a web page given its URL. Set useBrowser to true to use a browser (for dynamic or JavaScript-heavy pages), or false to use a simple HTTP GET request (for static pages). Returns the raw text content of the page."
+        "Reads the content of a web page given its URL. Set useBrowser to true to use a browser (for dynamic or JavaScript-heavy pages), or false to use a simple HTTP GET request (for static pages). Returns the raw text content of the page. You should USUALLY try to not use the browser. Only use the browser if that fails, or you have an intuition about the site."
     )]
-    public async Task<string> ReadPage(string url, bool useBrowser = true)
+    public async Task<string> ReadPage(string url, bool useBrowser = false)
     {
         _logger.LogInformation($"Reading page: {url} (useBrowser={useBrowser})");
         if (!useBrowser)
