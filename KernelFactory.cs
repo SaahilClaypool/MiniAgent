@@ -65,6 +65,17 @@ public class KernelFactory
                 ?? throw new ArgumentException($"Failed to create service: {type.Name}");
             builder.Plugins.AddFromObject(plugin);
         }
-        return builder.Build();
+        var kernel = builder.Build();
+        kernel.FunctionInvocationFilters.Add(new LoggingFilter(services.GetRequiredService<ILogger<Kernel>>()));
+        return kernel;
+    }
+}
+
+public class LoggingFilter(ILogger logger) : IFunctionInvocationFilter
+{
+    public async Task OnFunctionInvocationAsync(FunctionInvocationContext context, Func<FunctionInvocationContext, Task> next)
+    {
+        Console.WriteLine($"Calling {context.Function} with {context.Arguments}");
+        await next(context);
     }
 }

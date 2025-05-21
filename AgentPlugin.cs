@@ -53,7 +53,6 @@ public class AgentPlugin
             return Task.CompletedTask;
         });
         kernel.Plugins.AddFromObject(plugin);
-        kernel.FunctionInvocationFilters.Add(new LoggingFilter(_logger));
         var maxIterations = 10;
         while (
             !finished && history.Where(m => m.Role == AuthorRole.Assistant).Count() < maxIterations
@@ -83,14 +82,5 @@ public class StatePlugin(Func<Task> onComplete)
     {
         await onComplete();
         return "Completed";
-    }
-}
-
-public class LoggingFilter(ILogger logger) : IFunctionInvocationFilter
-{
-    public async Task OnFunctionInvocationAsync(FunctionInvocationContext context, Func<FunctionInvocationContext, Task> next)
-    {
-        logger.LogInformation($"Calling {context.Function} with {context.Arguments}");
-        await next(context);
     }
 }
