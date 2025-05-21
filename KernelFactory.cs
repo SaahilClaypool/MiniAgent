@@ -21,11 +21,11 @@ public class KernelFactory
     public Kernel Create(LLMModel model, params Type[] plugins)
     {
         var (endpoint, apiKey, largeModel, smallModel, searchModel) = (
-            config["Chat:Endpoint"] ?? throw new ArgumentException("Chat:Endpoint"),
-            config["Chat:ApiKey"] ?? throw new ArgumentException("Chat:ApiKey"),
-            config["Chat:LargeModel"] ?? throw new ArgumentException("Chat:LargeModel"),
-            config["Chat:SmallModel"] ?? throw new ArgumentException("Chat:SmallModel"),
-            config["Chat:SearchModel"] ?? throw new ArgumentException("Chat:SearchModel")
+            config["AG_Chat:Endpoint"] ?? throw new ArgumentException("AG_Chat:Endpoint"),
+            config["AG_Chat:ApiKey"] ?? throw new ArgumentException("AG_Chat:ApiKey"),
+            config["AG_Chat:LargeModel"] ?? throw new ArgumentException("AG_Chat:LargeModel"),
+            config["AG_Chat:SmallModel"] ?? throw new ArgumentException("AG_Chat:SmallModel"),
+            config["AG_Chat:SearchModel"] ?? throw new ArgumentException("AG_Chat:SearchModel")
         );
         var builder = Kernel.CreateBuilder();
         var chatClient = httpClients.GetOrAdd(

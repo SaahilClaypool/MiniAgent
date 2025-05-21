@@ -29,8 +29,8 @@ Further configuration or specific instructions might be required depending on th
 
 The following environment variables are used by this application:
 
-- `Chat:Endpoint`: The endpoint URL for the chat service.
-- `Chat:ApiKey`: The API key for authenticating with the chat service.
-- `Chat:LargeModel`: The name or identifier of the large chat model to use.
-- `Chat:SmallModel`: The name or identifier of the small chat model to use.
-- `Chat:SearchModel`: The name or identifier of the chat model to use for search operations.
+- `AG_Chat:Endpoint`: The endpoint URL for the chat service.
+- `AG_Chat:ApiKey`: The API key for authenticating with the chat service.
+- `AG_Chat:LargeModel`: The name or identifier of the large chat model to use.
+- `AG_Chat:SmallModel`: The name or identifier of the small chat model to use.
+- `AG_Chat:SearchModel`: The name or identifier of the chat model to use for search operations.
