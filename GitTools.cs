@@ -144,4 +144,67 @@ public static class GitHelper
             }
         }
     }
+
+    /// <summary>
+    /// Stages all changes (git add -A) in the current git repository.
+    /// </summary>
+    public static void AddAll()
+    {
+        var gitRoot = GetGitRoot(Directory.GetCurrentDirectory());
+        if (gitRoot == null)
+            throw new InvalidOperationException("Not inside a git repo.");
+
+        var psi = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = gitRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            Arguments = "add -A"
+        };
+        using (var p = Process.Start(psi))
+        {
+            p!.WaitForExit();
+            if (p.ExitCode != 0)
+            {
+                var err = p.StandardError.ReadToEnd();
+                throw new Exception($"git add -A failed: {err}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns the output of git diff with optional arguments. Default is "HEAD~".
+    /// </summary>
+    /// <param name="diffArgs">Arguments to pass to git diff (e.g., "HEAD~", "HEAD~..HEAD", "--cached").</param>
+    public static string Diff(string? diffArgs = null)
+    {
+        var gitRoot = GetGitRoot(Directory.GetCurrentDirectory());
+        if (gitRoot == null)
+            throw new InvalidOperationException("Not inside a git repo.");
+
+        var args = "diff";
+        if (!string.IsNullOrWhiteSpace(diffArgs))
+            args += " " + diffArgs;
+        else
+            args += " HEAD~";
+
+        var psi = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = gitRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            Arguments = args
+        };
+        using (var p = Process.Start(psi))
+        {
+            var output = p!.StandardOutput.ReadToEnd();
+            var err = p.StandardError.ReadToEnd();
+            p.WaitForExit();
+            if (p.ExitCode != 0)
+                throw new Exception($"git diff failed: {err}");
+            return output;
+        }
+    }
 }

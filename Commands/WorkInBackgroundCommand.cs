@@ -34,10 +34,10 @@ public sealed class WorkInBackgroundCommand(AgentPlugin agentPlugin, KernelFacto
             Directory.SetCurrentDirectory(worktreePath);
 
             var response = await agentPlugin.StartSubtask(settings.Task);
-            Console.WriteLine($"Final Response\n\n{response}");
 
             var commit = await CreateCommit(response);
-            Console.WriteLine($"Making a commit...{response}");
+            Console.WriteLine($"Making a commit...\n{commit}");
+            Console.WriteLine($"\n\n{GitHelper.Diff()}");
 
             return 0;
         }
@@ -84,7 +84,10 @@ public sealed class WorkInBackgroundCommand(AgentPlugin agentPlugin, KernelFacto
         );
         var chatCompletionService = kernel.GetRequiredService<IChatCompletionService>();
         var msg = await chatCompletionService.CompleteJson<CommitResponse>(history);
-        return $"{msg.Title}\n\n{msg.Summary}";
+        var commit = $"{msg.Title}\n\n{msg.Summary}";
+        GitHelper.AddAll();
+        GitHelper.CreateCommit(commit);
+        return commit;
     }
 
     private class BranchResponse
