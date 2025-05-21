@@ -37,6 +37,7 @@ public sealed class WorkInBackgroundCommand(AgentPlugin agentPlugin, KernelFacto
             var response = await agentPlugin.StartSubtask(settings.Task);
 
             var commit = await CreateCommit(response);
+            GitHelper.RemoveWorktree(branchName);
             Console.WriteLine($"Making a commit...\n{commit}");
             Console.WriteLine($"\n\n{GitHelper.Diff()}");
 

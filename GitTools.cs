@@ -208,4 +208,77 @@ public static class GitHelper
             return output;
         }
     }
+
+    /// <summary>
+    /// Removes a git worktree and its associated branch by branch name.
+    /// </summary>
+    public static void RemoveWorktree(string branchName)
+    {
+        var gitRoot = GetGitRoot(Directory.GetCurrentDirectory());
+        if (gitRoot == null)
+            throw new InvalidOperationException("Not inside a git repo.");
+
+        // sanitize branch name for filesystem
+        var invalid = Path.GetInvalidFileNameChars();
+        var safeBranch = new string(
+            branchName.Select(c => invalid.Contains(c) ? '_' : c).ToArray()
+        );
+
+        string baseDir;
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            baseDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "agent"
+            );
+        }
+        else
+        {
+            baseDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                ".local",
+                "agent"
+            );
+        }
+
+        var worktreePath = Path.Combine(baseDir, $"project-{safeBranch}");
+
+        // Remove the worktree using git
+        var removePsi = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = gitRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            Arguments = $"worktree remove \"{worktreePath}\""
+        };
+        using (var p = Process.Start(removePsi))
+        {
+            p!.WaitForExit();
+            if (p.ExitCode != 0)
+            {
+                var err = p.StandardError.ReadToEnd();
+                throw new Exception($"git worktree remove failed: {err}");
+            }
+        }
+
+        // Delete the branch
+        var branchPsi = new ProcessStartInfo("git")
+        {
+            WorkingDirectory = gitRoot,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            Arguments = $"branch -D \"{branchName}\""
+        };
+        using (var p = Process.Start(branchPsi))
+        {
+            p!.WaitForExit();
+            // If branch doesn't exist, ignore error
+        }
+
+        // Remove the directory if it still exists
+        if (Directory.Exists(worktreePath))
+            Directory.Delete(worktreePath, recursive: true);
+    }
 }
