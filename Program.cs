@@ -1,13 +1,19 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using MyAgent.Commands;
 using Spectre.Console.Cli;
 
 var config = new ConfigurationBuilder();
 config.AddEnvironmentVariables();
 var services = new ServiceCollection();
-services.AddLogging();
+services.AddLogging(builder =>
+{
+    builder.ClearProviders();
+    builder.AddConsole();
+    builder.SetMinimumLevel(LogLevel.Information);
+});
 services.AddSingleton<IConfiguration>(config.Build());
 services.AddSingleton<KernelFactory>();
 services.AddScoped<WebPlugin>();
@@ -29,7 +35,9 @@ app.Configure(config =>
         .WithExample(new[] { "ask", "What is the answer?" });
 
     config.AddCommand<ChatCommand>("chat").WithDescription("Start interactive agent chat session.");
-    config.AddCommand<WorkInBackgroundCommand>("bg").WithDescription("Start a task in the background");
+    config
+        .AddCommand<WorkInBackgroundCommand>("bg")
+        .WithDescription("Start a task in the background");
 });
 
 await app.RunAsync(args);

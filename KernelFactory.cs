@@ -80,11 +80,6 @@ public class LoggingFilter(ILogger logger) : IFunctionInvocationFilter
         Func<FunctionInvocationContext, Task> next
     )
     {
-        logger.LogInformation(
-            "Calling [{function} ({arguments})]",
-            context.Function.Name,
-            string.Join(", ", context.Arguments.Select(a => $"{a.Key}={a.Value}"))
-        );
         await next(context);
     }
 }
