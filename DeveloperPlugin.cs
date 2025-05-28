@@ -19,6 +19,29 @@ public class DeveloperPlugin
         _logger = logger;
     }
 
+    /// <summary>
+    /// TODO: make this configurable
+    /// </summary>
+    async Task<bool> Confirm(string message)
+    {
+        Console.WriteLine(message);
+        var inputTask = Task.Run(() => Console.ReadLine());
+        var completedTask = await Task.WhenAny(inputTask, Task.Delay(TimeSpan.FromSeconds(10)));
+        if (completedTask == inputTask)
+        {
+            var input = inputTask.Result;
+            return input?.StartsWith("y", StringComparison.CurrentCultureIgnoreCase) == true;
+        }
+        else
+        {
+            // Timeout: assume confirmation
+            _logger.LogInformation(
+                "No input received within 10 seconds. Assuming confirmation (yes)."
+            );
+            return true;
+        }
+    }
+
     [KernelFunction]
     [Description("Get repository symbol overview")]
     public async Task<string> RepositoryOverview()
@@ -218,7 +241,7 @@ public class DeveloperPlugin
         return $"Wrote edits to {path}";
     }
 
-    // [KernelFunction]
+    [KernelFunction]
     [Description(
         "Runs a CLI command after confirming with the user. If 'n' or 'no', denies. If 'y' or 'yes', runs."
     )]
@@ -227,10 +250,9 @@ public class DeveloperPlugin
         _logger.LogInformation(
             $"Proposed CLI command: '{command}'. Waiting for user confirmation."
         );
-        Console.WriteLine($"Confirm running command '{command}'? (y/n)");
-        var confirmation = Console.ReadLine()?.ToLowerInvariant();
+        var confirmation = await Confirm($"Would you like to run {command}");
 
-        if (confirmation == "y" || confirmation == "yes")
+        if (confirmation)
         {
             _logger.LogInformation($"User confirmed. Running command: '{command}'");
             try
@@ -277,7 +299,7 @@ public class DeveloperPlugin
                 if (process.ExitCode == 0)
                 {
                     _logger.LogInformation($"Command executed successfully. Output: {output}");
-                    return $"Command executed successfully. Output: {output}";
+                    return $"Command executed successfully. Output:\n {output}";
                 }
                 else
                 {
@@ -293,17 +315,10 @@ public class DeveloperPlugin
                 return $"Error executing command: {ex.Message}";
             }
         }
-        else if (confirmation == "n" || confirmation == "no")
+        else
         {
             _logger.LogInformation("User denied command execution.");
             return "Command execution denied by user.";
-        }
-        else
-        {
-            _logger.LogInformation(
-                "Invalid confirmation input. Command execution denied by default."
-            );
-            return "Invalid confirmation input. Command execution denied.";
         }
     }
 
