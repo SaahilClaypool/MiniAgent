@@ -98,6 +98,7 @@ public class DeveloperPlugin
     [Description(
         """
             Use the tool to think about something. It will not obtain new information or make any changes to the repository, but just log the thought. Use it when complex reasoning or brainstorming is needed. 
+            ALWAYS use this after receiving a lot of new data from a tool call.
 
             Common use cases:
             1. When exploring a repository and discovering the source of a bug, call this tool to brainstorm several unique ways of fixing the bug, and assess which change(s) are likely to be simplest and most effective
@@ -116,7 +117,12 @@ public class DeveloperPlugin
     }
 
     [KernelFunction]
-    [Description("Read File")]
+    [Description(
+        """
+            Read a file.
+            This will prefix each line with a line number up to a | character. The left of the | is not part of the file. It only indicates the line number.
+            """
+    )]
     public string ReadFile(string path)
     {
         _logger.LogTrace($"Reading file: {path}");
@@ -126,6 +132,12 @@ public class DeveloperPlugin
             throw new FileNotFoundException($"File not found: {path}");
         }
         var content = File.ReadAllText(path);
+        if (content.Length > 100_000)
+        {
+            _logger.LogWarning($"File too large: {path} ({content.Length})");
+            content = $"{content[..100_000]}\n...\nFile too large - rest hidden";
+        }
+        content = string.Join("\n", content.Split("\n").Select((line, i) => $"{i:3}|{line}"));
         _logger.LogTrace(
             $"Read file content (first 100 chars): {content.Substring(0, Math.Min(content.Length, 100))}"
         );
@@ -163,83 +175,47 @@ public class DeveloperPlugin
     [KernelFunction]
     [Description(
         """
-            Edit a file by providing the path, the text to replace, and the replacement text.
-            You should *almost always* use this over `WriteFile` to avoid overwriting the entire file.
-            Each searchText should be a contiguous chunk of lines to search for in the existing source code.
-            You will replace ALL of the searchText with the new text.
-            Make sure you search for ALL of the text you need to replace.
+            Edit a file by providing the path, the line to start inserting text at (base 0).
+            This will replace the lines of text from [lineStart, replaceLineEnd) (including the start line, excluding the end line).
+            To insert text without replacing, simply set line start and line end to the same line number.
+
+            Example:
+            Insert text above line 5 
+            EditFileText("path/to/file", 5, 5, "new line")
+
+            Replace lines 0 through 4 with new text
+            EditFileText("path/to/file", 0, 5, "new line 0\nnew line 1")
             """
     )]
-    public string EditFile(string path, string searchText, string replacement)
+    public string EditFileText(string path, int lineStart, int lineEnd, string newText)
     {
-        _logger.LogTrace($"Editing file: {path} replacing '{searchText}' with '{replacement}'");
+        _logger.LogTrace($"Editing file: {path} replacing lines {lineStart} to {lineEnd} with new text.");
         if (!File.Exists(path))
         {
             _logger.LogError($"File not found: {path}");
             throw new FileNotFoundException($"File not found: {path}");
         }
 
-        var content = File.ReadAllText(path);
+        var lines = File.ReadAllLines(path).ToList();
 
-        if (content.Contains(searchText))
+        if (lineStart < 0 || lineStart > lines.Count || lineEnd < lineStart || lineEnd > lines.Count)
         {
-            // replace only the first occurrence
-            bool replaced = false;
-            content = Regex.Replace(
-                content,
-                Regex.Escape(searchText),
-                m =>
-                {
-                    if (!replaced)
-                    {
-                        replaced = true;
-                        return replacement;
-                    }
-                    return m.Value;
-                },
-                RegexOptions.None,
-                TimeSpan.FromSeconds(1)
-            );
-            _logger.LogTrace($"Replaced first occurrence of '{searchText}' in {path}");
-        }
-        else
-        {
-            // fall back: find best matching line
-            var lines = content.Split('\n');
-            var best = lines
-                .Select(
-                    (line, idx) =>
-                        new
-                        {
-                            Line = line,
-                            Distance = EditDistance(line.Trim(), searchText.Trim()),
-                            Index = idx
-                        }
-                )
-                .OrderBy(x => x.Distance)
-                .First();
-
-            // threshold = half the length of the line we're comparing
-            if (best.Distance > best.Line.Length / 2)
-            {
-                _logger.LogError(
-                    $"Text to replace not found. Closest match (distance {best.Distance}): {best.Line}"
-                );
-                throw new ArgumentException(
-                    $"Text to replace not found. Closest match (distance {best.Distance}): {best.Line}"
-                );
-            }
-
-            // replace that single line
-            lines[best.Index] = replacement;
-            content = string.Join('\n', lines);
-            _logger.LogTrace($"Replaced line {best.Index} in {path} with '{replacement}'");
+            _logger.LogError($"Invalid line range: {lineStart}-{lineEnd} for file with {lines.Count} lines.");
+            throw new ArgumentOutOfRangeException($"Invalid line range: {lineStart}-{lineEnd}");
         }
 
-        File.WriteAllText(path, content);
+        var newLines = newText.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+
+        // Remove lines in the range [lineStart, lineEnd)
+        lines.RemoveRange(lineStart, lineEnd - lineStart);
+        // Insert new lines at lineStart
+        lines.InsertRange(lineStart, newLines);
+
+        File.WriteAllLines(path, lines);
         _logger.LogTrace($"Finished editing file: {path}");
-        return $"Wrote edits to {path}";
+        return $"Edited lines {lineStart} to {lineEnd} in {path}";
     }
+
 
     [KernelFunction]
     [Description(
