@@ -42,7 +42,7 @@ public class DeveloperPlugin
         }
     }
 
-    [KernelFunction]
+    [KernelFunction("repository_overview")]
     [Description("Get repository symbol overview")]
     public async Task<string> RepositoryOverview()
     {
@@ -58,7 +58,7 @@ public class DeveloperPlugin
         return repoMap;
     }
 
-    [KernelFunction]
+    [KernelFunction("rg")]
     [Description("Search local files using ripgrep")]
     public async Task<string> Rg(string search)
     {
@@ -94,7 +94,7 @@ public class DeveloperPlugin
         return output;
     }
 
-    [KernelFunction]
+    [KernelFunction("think")]
     [Description(
         """
             Use the tool to think about something. It will not obtain new information or make any changes to the repository, but just log the thought. Use it when complex reasoning or brainstorming is needed. 
@@ -115,7 +115,7 @@ public class DeveloperPlugin
         return $"Your thought has been logged";
     }
 
-    [KernelFunction]
+    [KernelFunction("read_file")]
     [Description("Read File")]
     public string ReadFile(string path)
     {
@@ -132,7 +132,7 @@ public class DeveloperPlugin
         return content;
     }
 
-    [KernelFunction]
+    [KernelFunction("list_files")]
     [Description("list files")]
     public string ListFiles(string path)
     {
@@ -150,7 +150,7 @@ public class DeveloperPlugin
         return $"Files: {files} Directories: {directories}";
     }
 
-    [KernelFunction]
+    [KernelFunction("write_file")]
     [Description("Write File")]
     public string WriteFile(string path, string content)
     {
@@ -160,7 +160,7 @@ public class DeveloperPlugin
         return $"wrote content to {path}";
     }
 
-    [KernelFunction]
+    [KernelFunction("edit_file")]
     [Description(
         """
             Edit a file by providing the path, the text to replace, and the replacement text.
@@ -241,7 +241,7 @@ public class DeveloperPlugin
         return $"Wrote edits to {path}";
     }
 
-    [KernelFunction]
+    [KernelFunction("run_cli_command")]
     [Description(
         "Runs a CLI command after confirming with the user. If 'n' or 'no', denies. If 'y' or 'yes', runs."
     )]

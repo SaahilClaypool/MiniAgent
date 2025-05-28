@@ -16,7 +16,7 @@ public class WebPlugin
         _logger = logger;
     }
 
-    [KernelFunction]
+    [KernelFunction("search")]
     [Description(
         """
             Ask an assistant to search the internet for you.
@@ -40,7 +40,7 @@ public class WebPlugin
         return result.Content!;
     }
 
-    [KernelFunction]
+    [KernelFunction("read_page")]
     [Description(
         "Reads the content of a web page given its URL. Set useBrowser to true to use a browser (for dynamic or JavaScript-heavy pages), or false to use a simple HTTP GET request (for static pages). Returns the raw text content of the page. You should USUALLY try to not use the browser. Only use the browser if that fails, or you have an intuition about the site."
     )]

@@ -18,7 +18,7 @@ public class AgentPlugin
         _logger = logger;
     }
 
-    [KernelFunction]
+    [KernelFunction("start_subtask")]
     [Description(
         """
             Ask an agent to run a subtask for you. Give it a *detailed* and *specific* prompt of what you want it to do.
@@ -48,7 +48,7 @@ public class AgentPlugin
         );
     }
 
-    [KernelFunction]
+    [KernelFunction("use_an_expert")]
     [Description(
         """
             Ask an expert agent a question. Make sure you provide a detailed task definition including the output you need. Make sure to provide as much context as you can.
@@ -121,7 +121,7 @@ public class AgentPlugin
 
 public class StatePlugin(Func<Task> onComplete)
 {
-    [KernelFunction]
+    [KernelFunction("complete")]
     [Description("Call this to mark the task as completed")]
     public async Task<string> Complete()
     {
