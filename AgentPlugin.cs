@@ -57,7 +57,7 @@ public class AgentPlugin
             - When you need to solve a complicated problems (algorithms, coding etc.) ask this agent to help you solve it
             """
     )]
-    public async Task<string> AskExpert(string question)
+    public async Task<string> UseAnExpert(string question)
     {
         var prompt = $"""
             You are an expert agent - you should answer the users question to help them solve their task.
