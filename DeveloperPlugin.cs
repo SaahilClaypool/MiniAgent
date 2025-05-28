@@ -64,7 +64,7 @@ public class DeveloperPlugin
     {
         _logger.LogInformation($"Searching for '{search}' using ripgrep...");
         var rgPath = "rg";
-        var arguments = $"\"{search}\" -C 2 --max-columns 200 ";
+        var arguments = $"\"{search}\" -C 2 --max-columns 200 -H -N";
 
         var processStartInfo = new ProcessStartInfo
         {
@@ -170,6 +170,10 @@ public class DeveloperPlugin
             These must be EXACT matches for text in the file. All of the lines from editLineStart to editLineEnd will be replaced with the replacement.
             To insert text, editLineEnd should be set to an empty string "".
             To insert text at the START of the file, set editLineStart to an empty string "".
+
+            Example:
+            To replace "old_text" with "new_text" in a file named "example.txt":
+            edit_file(path="example.txt", editLineStart="old_text_start", editLineEnd="old_text_end", replacement="new_text")
             """
     )]
     public string EditFile(
@@ -189,59 +193,64 @@ public class DeveloperPlugin
         }
 
         var content = File.ReadAllText(path);
-        var lines = content.Split("\n");
-        var startIndex = -1;
+        var lines = content.Split('\n');
+        int startIndex = -1,
+            endIndex = -1;
 
-        if (editLineStart != "")
+        if (!string.IsNullOrEmpty(editLineStart))
         {
-            startIndex = Array.IndexOf(lines, editLineStart);
+            startIndex = Array.FindIndex(lines, l => l.Trim() == editLineStart.Trim());
             if (startIndex == -1)
-            {
-                startIndex = lines
-                    .Index()
-                    .FirstOrDefault(line => line.Item2.Trim() == editLineStart.Trim(), (-1, ""))
-                    .Item1;
-            }
-            if (startIndex == -1)
-            {
                 return "Failed to find startIndex";
-            }
         }
-        var endIndex = -1;
-        if (editLineStart != "")
+        if (!string.IsNullOrEmpty(editLineEnd))
         {
-            Array.IndexOf(lines, editLineEnd);
+            endIndex = Array.FindIndex(lines, l => l.Trim() == editLineEnd.Trim());
             if (endIndex == -1)
-            {
-                endIndex = lines
-                    .Index()
-                    .FirstOrDefault(line => line.Item2.Trim() == editLineEnd.Trim(), (-1, ""))
-                    .Item1;
-            }
-            if (endIndex == -1)
-            {
                 return "Failed to find endIndex";
-            }
         }
 
-        var newContent = "";
-        if (startIndex == -1)
+        string newContent;
+        if (string.IsNullOrEmpty(editLineStart) && string.IsNullOrEmpty(editLineEnd))
         {
-            newContent = string.Join("\n", lines.Prepend(replacement));
+            // Insert at start of file
+            newContent = string.Join('\n', new[] { replacement }.Concat(lines));
         }
-        if (endIndex == -1)
+        else if (!string.IsNullOrEmpty(editLineStart) && string.IsNullOrEmpty(editLineEnd))
         {
+            // Insert after start line
             newContent = string.Join(
-                "\n",
-                lines.Take(startIndex).Append(replacement).Concat(lines.Skip(startIndex))
+                '\n',
+                lines
+                    .Take(startIndex + 1)
+                    .Concat(new[] { replacement })
+                    .Concat(lines.Skip(startIndex + 1))
+            );
+        }
+        else if (!string.IsNullOrEmpty(editLineStart) && !string.IsNullOrEmpty(editLineEnd))
+        {
+            // Replace from startIndex to endIndex (inclusive)
+            if (endIndex < startIndex)
+                return "endIndex must be >= startIndex";
+            newContent = string.Join(
+                '\n',
+                lines
+                    .Take(startIndex)
+                    .Concat(new[] { replacement })
+                    .Concat(lines.Skip(endIndex + 1))
+            );
+        }
+        else if (string.IsNullOrEmpty(editLineStart) && !string.IsNullOrEmpty(editLineEnd))
+        {
+            // Insert before end line
+            newContent = string.Join(
+                '\n',
+                lines.Take(endIndex).Concat(new[] { replacement }).Concat(lines.Skip(endIndex))
             );
         }
         else
         {
-            newContent = string.Join(
-                "\n",
-                lines.Take(startIndex).Append(replacement).Concat(lines.Skip(endIndex))
-            );
+            return "Invalid edit parameters";
         }
 
         File.WriteAllText(path, newContent);
