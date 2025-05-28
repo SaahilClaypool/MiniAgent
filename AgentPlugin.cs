@@ -98,7 +98,7 @@ public class AgentPlugin
             return Task.CompletedTask;
         });
         kernel.Plugins.AddFromObject(plugin);
-        var maxIterations = 10;
+        var maxIterations = 25;
         while (
             !finished && history.Where(m => m.Role == AuthorRole.Assistant).Count() < maxIterations
         )

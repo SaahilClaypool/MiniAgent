@@ -165,14 +165,23 @@ public class DeveloperPlugin
         """
             Edit a file by providing the path, the text to replace, and the replacement text.
             You should *almost always* use this over `WriteFile` to avoid overwriting the entire file.
-            Each searchText should be a contiguous chunk of lines to search for in the existing source code.
-            You will replace ALL of the searchText with the new text.
-            Make sure you search for ALL of the text you need to replace.
+
+            You will pass in the edit line start and edit line end.
+            These must be EXACT matches for text in the file. All of the lines from editLineStart to editLineEnd will be replaced with the replacement.
+            To insert text, editLineEnd should be set to an empty string "".
+            To insert text at the START of the file, set editLineStart to an empty string "".
             """
     )]
-    public string EditFile(string path, string searchText, string replacement)
+    public string EditFile(
+        string path,
+        string editLineStart,
+        string editLineEnd,
+        string replacement
+    )
     {
-        _logger.LogTrace($"Editing file: {path} replacing '{searchText}' with '{replacement}'");
+        _logger.LogTrace(
+            $"Editing file: {path} replacing '{editLineStart}' to '{editLineEnd}' with '{replacement}'"
+        );
         if (!File.Exists(path))
         {
             _logger.LogError($"File not found: {path}");
@@ -180,63 +189,62 @@ public class DeveloperPlugin
         }
 
         var content = File.ReadAllText(path);
+        var lines = content.Split("\n");
+        var startIndex = -1;
 
-        if (content.Contains(searchText))
+        if (editLineStart != "")
         {
-            // replace only the first occurrence
-            bool replaced = false;
-            content = Regex.Replace(
-                content,
-                Regex.Escape(searchText),
-                m =>
-                {
-                    if (!replaced)
-                    {
-                        replaced = true;
-                        return replacement;
-                    }
-                    return m.Value;
-                },
-                RegexOptions.None,
-                TimeSpan.FromSeconds(1)
+            startIndex = Array.IndexOf(lines, editLineStart);
+            if (startIndex == -1)
+            {
+                startIndex = lines
+                    .Index()
+                    .FirstOrDefault(line => line.Item2.Trim() == editLineStart.Trim(), (-1, ""))
+                    .Item1;
+            }
+            if (startIndex == -1)
+            {
+                return "Failed to find startIndex";
+            }
+        }
+        var endIndex = -1;
+        if (editLineStart != "")
+        {
+            Array.IndexOf(lines, editLineEnd);
+            if (endIndex == -1)
+            {
+                endIndex = lines
+                    .Index()
+                    .FirstOrDefault(line => line.Item2.Trim() == editLineEnd.Trim(), (-1, ""))
+                    .Item1;
+            }
+            if (endIndex == -1)
+            {
+                return "Failed to find endIndex";
+            }
+        }
+
+        var newContent = "";
+        if (startIndex == -1)
+        {
+            newContent = string.Join("\n", lines.Prepend(replacement));
+        }
+        if (endIndex == -1)
+        {
+            newContent = string.Join(
+                "\n",
+                lines.Take(startIndex).Append(replacement).Concat(lines.Skip(startIndex))
             );
-            _logger.LogTrace($"Replaced first occurrence of '{searchText}' in {path}");
         }
         else
         {
-            // fall back: find best matching line
-            var lines = content.Split('\n');
-            var best = lines
-                .Select(
-                    (line, idx) =>
-                        new
-                        {
-                            Line = line,
-                            Distance = EditDistance(line.Trim(), searchText.Trim()),
-                            Index = idx
-                        }
-                )
-                .OrderBy(x => x.Distance)
-                .First();
-
-            // threshold = half the length of the line we're comparing
-            if (best.Distance > best.Line.Length / 2)
-            {
-                _logger.LogError(
-                    $"Text to replace not found. Closest match (distance {best.Distance}): {best.Line}"
-                );
-                throw new ArgumentException(
-                    $"Text to replace not found. Closest match (distance {best.Distance}): {best.Line}"
-                );
-            }
-
-            // replace that single line
-            lines[best.Index] = replacement;
-            content = string.Join('\n', lines);
-            _logger.LogTrace($"Replaced line {best.Index} in {path} with '{replacement}'");
+            newContent = string.Join(
+                "\n",
+                lines.Take(startIndex).Append(replacement).Concat(lines.Skip(endIndex))
+            );
         }
 
-        File.WriteAllText(path, content);
+        File.WriteAllText(path, newContent);
         _logger.LogTrace($"Finished editing file: {path}");
         return $"Wrote edits to {path}";
     }
