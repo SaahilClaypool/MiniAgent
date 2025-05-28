@@ -34,3 +34,54 @@ The following environment variables are used by this application:
 - `AG_Chat:LargeModel`: The name or identifier of the large chat model to use.
 - `AG_Chat:SmallModel`: The name or identifier of the small chat model to use.
 - `AG_Chat:SearchModel`: The name or identifier of the chat model to use for search operations.
+
+## `edit_file` format for LLMs
+
+The `edit_file` function is designed for precise file modifications. It requires the following parameters:
+
+- `path`: The path to the file to be edited.
+- `editLineStart`: The exact string of the line where the replacement or insertion should begin.
+- `editLineEnd`: The exact string of the line where the replacement should end.
+- `replacement`: The new text that will replace the content between `editLineStart` and `editLineEnd`.
+
+**How it works:**
+
+The function identifies the block of text between `editLineStart` and `editLineEnd` (inclusive) and replaces it entirely with the `replacement` string.
+
+**Use cases:**
+
+- **Replacing existing content:** Provide `editLineStart` and `editLineEnd` that define the block to be replaced, and the new content in `replacement`.
+- **Inserting text:**
+  - To insert text **after** `editLineStart`, set `editLineEnd` to an empty string `""`.
+  - To insert text **at the beginning of the file**, set `editLineStart` to an empty string `""`. In this case, `editLineEnd` will be the first line of the original file.
+
+**Example:**
+
+To change:
+
+```
+Hello,
+This is old text.
+Goodbye.
+```
+
+to:
+
+```
+Hello,
+This is new text.
+Goodbye.
+```
+
+You would use:
+`editLineStart="This is old text."`
+`editLineEnd="This is old text."`
+`replacement="This is new text."`
+
+To insert "New line." after "Hello,":
+
+You would use:
+`editLineStart="Hello,"`
+`editLineEnd=""`
+`replacement="Hello,
+New line."`
