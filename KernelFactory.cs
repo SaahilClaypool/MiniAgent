@@ -21,12 +21,12 @@ public class KernelFactory
     public Kernel Create(LLMModel model, params IEnumerable<Type> plugins)
     {
         var (endpoint, apiKey, largeModel, mediumModel, smallModel, searchModel) = (
-            config["AG_Chat:Endpoint"] ?? throw new ArgumentException("AG_Chat:Endpoint"),
+            config["AG_Chat:Endpoint"] ?? "https://openrouter.ai/api/v1",
             config["AG_Chat:ApiKey"] ?? throw new ArgumentException("AG_Chat:ApiKey"),
-            config["AG_Chat:LargeModel"] ?? throw new ArgumentException("AG_Chat:LargeModel"),
-            config["AG_Chat:MediumModel"] ?? throw new ArgumentException("AG_Chat:MediumModel"),
-            config["AG_Chat:SmallModel"] ?? throw new ArgumentException("AG_Chat:SmallModel"),
-            config["AG_Chat:SearchModel"] ?? throw new ArgumentException("AG_Chat:SearchModel")
+            config["AG_Chat:LargeModel"] ?? "openai/o4-mini",
+            config["AG_Chat:MediumModel"] ?? "google/gemini-2.5-flash-preview-05-20",
+            config["AG_Chat:SmallModel"] ?? "google/gemini-2.5-flash-preview-05-20",
+            config["AG_Chat:SearchModel"] ?? "perplexity/sonar"
         );
         var builder = Kernel.CreateBuilder();
         var chatClient = httpClients.GetOrAdd(
