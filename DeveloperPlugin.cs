@@ -42,7 +42,7 @@ public class DeveloperPlugin
         }
     }
 
-    [KernelFunction("repository_overview")]
+    // [KernelFunction("repository_overview")]
     [Description("Get repository symbol overview")]
     public async Task<string> RepositoryOverview()
     {
@@ -87,7 +87,7 @@ public class DeveloperPlugin
         if (process.ExitCode != 0)
         {
             _logger.LogError($"Ripgrep failed with exit code {process.ExitCode}: {error}");
-            throw new Exception($"Ripgrep failed with exit code {process.ExitCode}: {error}");
+            return $"Error: Ripgrep failed with exit code {process.ExitCode}: {error}";
         }
         _logger.LogInformation($"Ripgrep results:\n{output}");
 
@@ -123,7 +123,7 @@ public class DeveloperPlugin
         if (!File.Exists(path))
         {
             _logger.LogError($"File not found: {path}");
-            throw new FileNotFoundException($"File not found: {path}");
+            return $"Error: File not found: {path}";
         }
         var content = File.ReadAllText(path);
         _logger.LogTrace(
@@ -140,7 +140,7 @@ public class DeveloperPlugin
         if (!Directory.Exists(path))
         {
             _logger.LogError($"Directory not found: {path}");
-            throw new DirectoryNotFoundException($"Directory not found: {path}");
+            return $"Error: Directory not found: {path}";
         }
         var files = string.Join(" ", Directory.GetFiles(path));
         var directories = string.Join(" ", Directory.GetDirectories(path));
@@ -199,15 +199,15 @@ public class DeveloperPlugin
 
         if (!string.IsNullOrEmpty(editLineStart))
         {
-            startIndex = Array.FindIndex(lines, l => l.Trim() == editLineStart.Trim());
+            startIndex = FindLineIndex(lines, editLineStart, "start", _logger);
             if (startIndex == -1)
-                return "Failed to find startIndex";
+                return $"Error: Failed to find startIndex: {editLineStart}";
         }
         if (!string.IsNullOrEmpty(editLineEnd))
         {
-            endIndex = Array.FindIndex(lines, l => l.Trim() == editLineEnd.Trim());
+            endIndex = FindLineIndex(lines, editLineEnd, "end", _logger);
             if (endIndex == -1)
-                return "Failed to find endIndex";
+                return $"Error: Failed to find endIndex: {editLineEnd}";
         }
 
         string newContent;
@@ -231,7 +231,7 @@ public class DeveloperPlugin
         {
             // Replace from startIndex to endIndex (inclusive)
             if (endIndex < startIndex)
-                return "endIndex must be >= startIndex";
+                return $"Error: endIndex ({endIndex}) must be >= startIndex ({startIndex})";
             newContent = string.Join(
                 '\n',
                 lines
@@ -250,12 +250,56 @@ public class DeveloperPlugin
         }
         else
         {
-            return "Invalid edit parameters";
+            throw new ArgumentException(
+                "Invalid edit parameters: Must specify either editLineStart, editLineEnd, or both."
+            );
         }
 
         File.WriteAllText(path, newContent);
         _logger.LogTrace($"Finished editing file: {path}");
         return $"Wrote edits to {path}";
+    }
+
+    private int FindLineIndex(string[] lines, string targetLine, string searchType, ILogger logger)
+    {
+        // Exact match first
+        int index = Array.FindIndex(lines, l => l.Trim() == targetLine.Trim());
+        if (index != -1)
+        {
+            logger.LogTrace($"Found {searchType} index by exact match: {index}");
+            return index;
+        }
+
+        logger.LogTrace(
+            $"Exact match not found for {searchType}, attempting fuzzy match for: {targetLine}"
+        );
+        int minDistance = int.MaxValue;
+        int bestIndex = -1;
+        const int FUZZY_MATCH_THRESHOLD = 5; // Define a reasonable threshold
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            int distance = EditDistance(targetLine.Trim(), lines[i].Trim());
+            if (distance < minDistance)
+            {
+                minDistance = distance;
+                bestIndex = i;
+            }
+        }
+
+        if (bestIndex != -1 && minDistance <= FUZZY_MATCH_THRESHOLD)
+        {
+            logger.LogTrace(
+                $"Found {searchType} index by fuzzy match (distance {minDistance}): {bestIndex}"
+            );
+            return bestIndex;
+        }
+        logger.LogWarning(
+            $"Fuzzy match found for {searchType} with distance {minDistance} did not meet threshold {FUZZY_MATCH_THRESHOLD}. Target: '{targetLine}' Closest: '{lines[bestIndex]}'"
+        );
+
+        logger.LogWarning($"Could not find {searchType} index for: {targetLine}");
+        return -1; // Not found
     }
 
     [KernelFunction("run_cli_command")]
