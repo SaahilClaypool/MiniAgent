@@ -165,27 +165,14 @@ public class DeveloperPlugin
         """
             Edit a file by providing the path, the text to replace, and the replacement text.
             You should *almost always* use this over `WriteFile` to avoid overwriting the entire file.
-
-            You will pass in the edit line start and edit line end.
-            These must be EXACT matches for text in the file. All of the lines from editLineStart to editLineEnd will be replaced with the replacement.
-            To insert text, editLineEnd should be set to an empty string "".
-            To insert text at the START of the file, set editLineStart to an empty string "".
-
-            Example:
-            To replace "old_text" with "new_text" in a file named "example.txt":
-            edit_file(path="example.txt", editLineStart="old_text_start", editLineEnd="old_text_end", replacement="new_text")
+            Each searchText should be a contiguous chunk of lines to search for in the existing source code.
+            You will replace ALL of the searchText with the new text.
+            Make sure you search for ALL of the text you need to replace.
             """
     )]
-    public string EditFile(
-        string path,
-        string editLineStart,
-        string editLineEnd,
-        string replacement
-    )
+    public string EditFile(string path, string searchText, string replacement)
     {
-        _logger.LogTrace(
-            $"Editing file: {path} replacing '{editLineStart}' to '{editLineEnd}' with '{replacement}'"
-        );
+        _logger.LogTrace($"Editing file: {path} replacing '{searchText}' with '{replacement}'");
         if (!File.Exists(path))
         {
             _logger.LogError($"File not found: {path}");
@@ -193,113 +180,65 @@ public class DeveloperPlugin
         }
 
         var content = File.ReadAllText(path);
-        var lines = content.Split('\n');
-        int startIndex = -1,
-            endIndex = -1;
 
-        if (!string.IsNullOrEmpty(editLineStart))
+        if (content.Contains(searchText))
         {
-            startIndex = FindLineIndex(lines, editLineStart, "start", _logger);
-            if (startIndex == -1)
-                return $"Error: Failed to find startIndex: {editLineStart}";
-        }
-        if (!string.IsNullOrEmpty(editLineEnd))
-        {
-            endIndex = FindLineIndex(lines, editLineEnd, "end", _logger);
-            if (endIndex == -1)
-                return $"Error: Failed to find endIndex: {editLineEnd}";
-        }
-
-        string newContent;
-        if (string.IsNullOrEmpty(editLineStart) && string.IsNullOrEmpty(editLineEnd))
-        {
-            // Insert at start of file
-            newContent = string.Join('\n', new[] { replacement }.Concat(lines));
-        }
-        else if (!string.IsNullOrEmpty(editLineStart) && string.IsNullOrEmpty(editLineEnd))
-        {
-            // Insert after start line
-            newContent = string.Join(
-                '\n',
-                lines
-                    .Take(startIndex + 1)
-                    .Concat(new[] { replacement })
-                    .Concat(lines.Skip(startIndex + 1))
+            // replace only the first occurrence
+            bool replaced = false;
+            content = Regex.Replace(
+                content,
+                Regex.Escape(searchText),
+                m =>
+                {
+                    if (!replaced)
+                    {
+                        replaced = true;
+                        return replacement;
+                    }
+                    return m.Value;
+                },
+                RegexOptions.None,
+                TimeSpan.FromSeconds(1)
             );
-        }
-        else if (!string.IsNullOrEmpty(editLineStart) && !string.IsNullOrEmpty(editLineEnd))
-        {
-            // Replace from startIndex to endIndex (inclusive)
-            if (endIndex < startIndex)
-                return $"Error: endIndex ({endIndex}) must be >= startIndex ({startIndex})";
-            newContent = string.Join(
-                '\n',
-                lines
-                    .Take(startIndex)
-                    .Concat(new[] { replacement })
-                    .Concat(lines.Skip(endIndex + 1))
-            );
-        }
-        else if (string.IsNullOrEmpty(editLineStart) && !string.IsNullOrEmpty(editLineEnd))
-        {
-            // Insert before end line
-            newContent = string.Join(
-                '\n',
-                lines.Take(endIndex).Concat(new[] { replacement }).Concat(lines.Skip(endIndex))
-            );
+            _logger.LogTrace($"Replaced first occurrence of '{searchText}' in {path}");
         }
         else
         {
-            throw new ArgumentException(
-                "Invalid edit parameters: Must specify either editLineStart, editLineEnd, or both."
-            );
+            // fall back: find best matching line
+            var lines = content.Split('\n');
+            var best = lines
+                .Select(
+                    (line, idx) =>
+                        new
+                        {
+                            Line = line,
+                            Distance = EditDistance(line.Trim(), searchText.Trim()),
+                            Index = idx
+                        }
+                )
+                .OrderBy(x => x.Distance)
+                .First();
+
+            // threshold = half the length of the line we're comparing
+            if (best.Distance > best.Line.Length / 2)
+            {
+                _logger.LogError(
+                    $"Text to replace not found. Closest match (distance {best.Distance}): {best.Line}"
+                );
+                throw new ArgumentException(
+                    $"Text to replace not found. Closest match (distance {best.Distance}): {best.Line}"
+                );
+            }
+
+            // replace that single line
+            lines[best.Index] = replacement;
+            content = string.Join('\n', lines);
+            _logger.LogTrace($"Replaced line {best.Index} in {path} with '{replacement}'");
         }
 
-        File.WriteAllText(path, newContent);
+        File.WriteAllText(path, content);
         _logger.LogTrace($"Finished editing file: {path}");
         return $"Wrote edits to {path}";
-    }
-
-    private int FindLineIndex(string[] lines, string targetLine, string searchType, ILogger logger)
-    {
-        // Exact match first
-        int index = Array.FindIndex(lines, l => l.Trim() == targetLine.Trim());
-        if (index != -1)
-        {
-            logger.LogTrace($"Found {searchType} index by exact match: {index}");
-            return index;
-        }
-
-        logger.LogTrace(
-            $"Exact match not found for {searchType}, attempting fuzzy match for: {targetLine}"
-        );
-        int minDistance = int.MaxValue;
-        int bestIndex = -1;
-        const int FUZZY_MATCH_THRESHOLD = 5; // Define a reasonable threshold
-
-        for (int i = 0; i < lines.Length; i++)
-        {
-            int distance = EditDistance(targetLine.Trim(), lines[i].Trim());
-            if (distance < minDistance)
-            {
-                minDistance = distance;
-                bestIndex = i;
-            }
-        }
-
-        if (bestIndex != -1 && minDistance <= FUZZY_MATCH_THRESHOLD)
-        {
-            logger.LogTrace(
-                $"Found {searchType} index by fuzzy match (distance {minDistance}): {bestIndex}"
-            );
-            return bestIndex;
-        }
-        logger.LogWarning(
-            $"Fuzzy match found for {searchType} with distance {minDistance} did not meet threshold {FUZZY_MATCH_THRESHOLD}. Target: '{targetLine}' Closest: '{lines[bestIndex]}'"
-        );
-
-        logger.LogWarning($"Could not find {searchType} index for: {targetLine}");
-        return -1; // Not found
     }
 
     [KernelFunction("run_cli_command")]
