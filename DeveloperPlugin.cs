@@ -204,36 +204,64 @@ public class DeveloperPlugin
         }
         else
         {
-            // fall back: find best matching line
-            var lines = content.Split('\n');
-            var best = lines
-                .Select(
-                    (line, idx) =>
-                        new
-                        {
-                            Line = line,
-                            Distance = EditDistance(line.Trim(), searchText.Trim()),
-                            Index = idx
-                        }
-                )
-                .OrderBy(x => x.Distance)
-                .First();
-
-            // threshold = half the length of the line we're comparing
-            if (best.Distance > best.Line.Length / 2)
+            // Split the searchText and file content into lines
+            var searchLines = searchText.Split('\n');
+            var fileLines = content.Split('\n');
+            
+            // Can't find chunks if search has more lines than the file
+            if (searchLines.Length > fileLines.Length)
+            {
+                _logger.LogError($"Search text has more lines ({searchLines.Length}) than the file ({fileLines.Length})");
+                throw new ArgumentException($"Search text has more lines ({searchLines.Length}) than the file ({fileLines.Length})");
+            }
+            
+            // Find the chunk of lines that best matches the search text
+            var bestDistance = int.MaxValue;
+            var bestStartIndex = 0;
+            
+            // For each possible starting position in the file
+            for (int i = 0; i <= fileLines.Length - searchLines.Length; i++)
+            {
+                // Calculate the combined distance for this chunk
+                int chunkDistance = 0;
+                for (int j = 0; j < searchLines.Length; j++)
+                {
+                    chunkDistance += EditDistance(fileLines[i + j].Trim(), searchLines[j].Trim());
+                }
+                
+                if (chunkDistance < bestDistance)
+                {
+                    bestDistance = chunkDistance;
+                    bestStartIndex = i;
+                }
+            }
+            
+            // Calculate a threshold based on the total characters in the search text
+            int totalSearchLength = searchLines.Sum(line => line.Length);
+            int threshold = Math.Max(totalSearchLength / 2, 10); // At least 10 chars difference
+            
+            // Get the best matching chunk for logging
+            var bestChunk = string.Join("\n", fileLines.Skip(bestStartIndex).Take(searchLines.Length));
+            
+            if (bestDistance > threshold)
             {
                 _logger.LogError(
-                    $"Text to replace not found. Closest match (distance {best.Distance}): {best.Line}"
+                    $"Text to replace not found. Closest match (distance {bestDistance}): {bestChunk}"
                 );
                 throw new ArgumentException(
-                    $"Text to replace not found. Closest match (distance {best.Distance}): {best.Line}"
+                    $"Text to replace not found. Closest match (distance {bestDistance}): {bestChunk}"
                 );
             }
-
-            // replace that single line
-            lines[best.Index] = replacement;
-            content = string.Join('\n', lines);
-            _logger.LogTrace($"Replaced line {best.Index} in {path} with '{replacement}'");
+            
+            // Replace the chunk with the replacement text
+            var beforeChunk = fileLines.Take(bestStartIndex).ToList();
+            var afterChunk = fileLines.Skip(bestStartIndex + searchLines.Length).ToList();
+            var replacementLines = replacement.Split('\n');
+            
+            var newLines = beforeChunk.Concat(replacementLines).Concat(afterChunk).ToArray();
+            content = string.Join('\n', newLines);
+            
+            _logger.LogTrace($"Replaced lines {bestStartIndex}-{bestStartIndex + searchLines.Length - 1} in {path} with replacement text");
         }
 
         File.WriteAllText(path, content);
