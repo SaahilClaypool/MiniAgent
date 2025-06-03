@@ -34,7 +34,7 @@ public sealed class WorkInBackgroundCommand(AgentPlugin agentPlugin, KernelFacto
             Directory.SetCurrentDirectory(worktreePath);
             Console.WriteLine("CURRENT: " + Directory.GetCurrentDirectory());
 
-            var response = await agentPlugin.StartSubtask(settings.Task);
+            var response = await agentPlugin.StartSubtask(settings.Task, allowSubAgents: true);
 
             var commit = await CreateCommit(response);
             GitHelper.RemoveWorktree(branchName);
