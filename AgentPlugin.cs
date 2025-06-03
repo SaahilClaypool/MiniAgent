@@ -27,7 +27,12 @@ public class AgentPlugin
             You should always make a plan for how thes subtasks will accomplish your main task before making them.
             """
     )]
-    public async Task<string> StartSubtask(string taskDefinition)
+    public async Task<string> StartSubtaskToolCall(string taskDefinition)
+    {
+        return await StartSubtask(taskDefinition, false);
+    }
+
+    public async Task<string> StartSubtask(string taskDefinition, bool allowSubAgents)
     {
         var prompt = $"""
             You are an agent - please keep going until the user’s query is completely resolved, before ending your turn and yielding back to the user. Only terminate your turn when you are sure that the problem is solved.
@@ -39,13 +44,12 @@ public class AgentPlugin
                     )} tool to indicate you have finished.
             Do NOT ask for user input - just finish when you have done the task to the best of your ability. If you have questions, return them in your final response.
             """;
-        return await StartSubtask(
-            taskDefinition,
-            LLMModel.Medium,
-            prompt,
-            typeof(WebPlugin),
-            typeof(DeveloperPlugin)
-        );
+        IEnumerable<Type> plugins = [typeof(WebPlugin), typeof(DeveloperPlugin),];
+        if (allowSubAgents)
+        {
+            plugins = plugins.Append(typeof(AgentPlugin));
+        }
+        return await StartSubtask(taskDefinition, LLMModel.Medium, prompt, plugins: plugins);
     }
 
     [KernelFunction("use_an_expert")]

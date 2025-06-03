@@ -166,6 +166,7 @@ public class DeveloperPlugin
             Edit a file by providing the path, the text to replace, and the replacement text.
             You should *almost always* use this over `WriteFile` to avoid overwriting the entire file.
             Each searchText should be a contiguous chunk of lines to search for in the existing source code.
+            This search text much match EXACTLY with the text in the file.
             You will replace ALL of the searchText with the new text.
             Make sure you search for ALL of the text you need to replace.
             """
@@ -181,7 +182,7 @@ public class DeveloperPlugin
 
         var content = File.ReadAllText(path);
 
-        if (content.Contains(searchText))
+        if (content.Contains(searchText, StringComparison.OrdinalIgnoreCase))
         {
             // replace only the first occurrence
             bool replaced = false;
@@ -198,7 +199,7 @@ public class DeveloperPlugin
                     return m.Value;
                 },
                 RegexOptions.None,
-                TimeSpan.FromSeconds(1)
+                TimeSpan.FromSeconds(5)
             );
             _logger.LogTrace($"Replaced first occurrence of '{searchText}' in {path}");
         }
@@ -207,18 +208,22 @@ public class DeveloperPlugin
             // Split the searchText and file content into lines
             var searchLines = searchText.Split('\n');
             var fileLines = content.Split('\n');
-            
+
             // Can't find chunks if search has more lines than the file
             if (searchLines.Length > fileLines.Length)
             {
-                _logger.LogError($"Search text has more lines ({searchLines.Length}) than the file ({fileLines.Length})");
-                throw new ArgumentException($"Search text has more lines ({searchLines.Length}) than the file ({fileLines.Length})");
+                _logger.LogError(
+                    $"Search text has more lines ({searchLines.Length}) than the file ({fileLines.Length})"
+                );
+                throw new ArgumentException(
+                    $"Search text has more lines ({searchLines.Length}) than the file ({fileLines.Length})"
+                );
             }
-            
+
             // Find the chunk of lines that best matches the search text
             var bestDistance = int.MaxValue;
             var bestStartIndex = 0;
-            
+
             // For each possible starting position in the file
             for (int i = 0; i <= fileLines.Length - searchLines.Length; i++)
             {
@@ -227,22 +232,29 @@ public class DeveloperPlugin
                 for (int j = 0; j < searchLines.Length; j++)
                 {
                     chunkDistance += EditDistance(fileLines[i + j].Trim(), searchLines[j].Trim());
+                    if (chunkDistance > bestDistance)
+                    {
+                        break;
+                    }
                 }
-                
+
                 if (chunkDistance < bestDistance)
                 {
                     bestDistance = chunkDistance;
                     bestStartIndex = i;
                 }
             }
-            
+
             // Calculate a threshold based on the total characters in the search text
             int totalSearchLength = searchLines.Sum(line => line.Length);
-            int threshold = Math.Max(totalSearchLength / 2, 10); // At least 10 chars difference
-            
+            int threshold = Math.Max(totalSearchLength, 30);
+
             // Get the best matching chunk for logging
-            var bestChunk = string.Join("\n", fileLines.Skip(bestStartIndex).Take(searchLines.Length));
-            
+            var bestChunk = string.Join(
+                "\n",
+                fileLines.Skip(bestStartIndex).Take(searchLines.Length)
+            );
+
             if (bestDistance > threshold)
             {
                 _logger.LogError(
@@ -252,16 +264,18 @@ public class DeveloperPlugin
                     $"Text to replace not found. Closest match (distance {bestDistance}): {bestChunk}"
                 );
             }
-            
+
             // Replace the chunk with the replacement text
             var beforeChunk = fileLines.Take(bestStartIndex).ToList();
             var afterChunk = fileLines.Skip(bestStartIndex + searchLines.Length).ToList();
             var replacementLines = replacement.Split('\n');
-            
+
             var newLines = beforeChunk.Concat(replacementLines).Concat(afterChunk).ToArray();
             content = string.Join('\n', newLines);
-            
-            _logger.LogTrace($"Replaced lines {bestStartIndex}-{bestStartIndex + searchLines.Length - 1} in {path} with replacement text");
+
+            _logger.LogTrace(
+                $"Replaced lines {bestStartIndex}-{bestStartIndex + searchLines.Length - 1} in {path} with replacement text"
+            );
         }
 
         File.WriteAllText(path, content);
